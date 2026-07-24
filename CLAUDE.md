@@ -12,22 +12,64 @@ pnpm (see `pnpm-lock.yaml` / `pnpm-workspace.yaml`). Node version is pinned via 
 
 ## Commands
 
+### Environment setup
+
 ```bash
 npx pnpm install        # install dependencies
 npx pnpm login          # one-time interactive MTProto login (phone + code + optional 2FA password)
+```
+
+### Development
+
+```bash
 npx pnpm start          # run the server (src/server.js)
 npx pnpm dev            # run with nodemon, auto-restarting on changes under src/
+```
+
+### Build
+
+```bash
+npx pnpm build          # tsc: compiles src/**/*.ts to dist/
+```
+
+There is no separate build-step-only command beyond this: `npx pnpm start` runs the compiled output from `npx pnpm build`.
+
+### Code quality
+
+```bash
 npx pnpm lint           # run ESLint
 npx pnpm format          # format the codebase with Prettier
 npx pnpm format:check   # check formatting without writing
 npx pnpm typecheck      # tsc --noEmit
 ```
 
-There is no test suite or build step configured in this project yet.
+### Testing
+
+```bash
+npx pnpm test           # run the Jest test suite once
+npx pnpm test:watch     # Jest in watch mode
+```
 
 ### Login flow
 
 `npx pnpm login` runs `src/login.js`, which prompts interactively (phone number, 2FA password, Telegram code) and prints a `TELEGRAM_SESSION` string at the end. That string must be pasted into `.env` so subsequent runs don't require re-authentication.
+
+## Testing
+
+TDD is the standard practice for this project: for any new feature or bugfix, write a failing test first (a unit test for pure/near-pure logic, or a supertest HTTP test for route/middleware behavior with `telegram-client.ts` mocked), watch it fail, implement the minimal change to make it pass, then refactor with the test green. There is no CI enforcement of this yet — it's a project convention backed by the pre-commit hook (see "Git hooks" below), not an automated gate beyond the local commit.
+
+Tests live under `test/`, mirroring `src/`'s structure (`test/signed-url.test.ts` ↔ `src/signed-url.ts`, `test/routes/stream-video.route.test.ts` ↔ `src/routes/stream-video.route.ts`, `test/cache/ttl-cache.test.ts` ↔ `src/cache/ttl-cache.ts`, etc.). `test/setup-env.ts` runs automatically before every test file (via `jest.config.js`'s `setupFiles`) and sets fake `TELEGRAM_API_ID`/`TELEGRAM_API_HASH`/`ACCESS_TOKEN`/etc. so `src/config.ts` never throws and no real `.env` is required or touched during tests. Tests run under `ts-jest` against `tsconfig.jest.json` — a copy of `tsconfig.json` with `rootDir`/`include` widened to also cover `test/`, kept separate from the main `tsconfig.json` so `npx pnpm build`/`npx pnpm typecheck` (which target `src/` only) are unaffected.
+
+**GramJS is always mocked, never real** — no test ever calls real Telegram/MTProto:
+- Tests of `src/telegram-client.ts` itself mock the low-level `telegram` package (`jest.mock('telegram')`, `jest.mock('telegram/sessions')`), stubbing `TelegramClient`'s methods (`connect`, `getMessages`, `getDialogs`, `getEntity`, `iterDownload`) and `Api.InputMessagesFilterVideo` directly.
+- Tests of `src/routes/*.ts` and `src/server.ts` mock the higher-level `src/telegram-client.ts` module instead (`jest.mock('../../src/telegram-client')`), stubbing its exported functions (`getVideoMessage`, `listVideos`, `listAllVideos`, `listChannels`, `getChannelVideos`) and `client.iterDownload` (returned as a fake async iterable yielding `Buffer` chunks) — these tests never reach into GramJS internals.
+- `client.iterDownload`'s `offset`/`limit` arguments must always be `big-integer` instances, never native `BigInt` (see "Key implementation details" below); `test/routes/stream-video.route.test.ts` asserts this explicitly to guard against silent regressions.
+
+**Caching between tests**: `src/cache/ttl-cache.ts` keeps its cache registry at module scope, so `test/telegram-client.test.ts` calls `clearAllCaches()` in `beforeEach` to stop one test's mocked `getMessages`/`getDialogs`/etc. call count from leaking into the next (Jest gives each *test file* a fresh module registry automatically, so this only matters within a single file, not across files).
+
+`src/server.ts` exports `buildApp()` (a synchronous Express app factory with no I/O) alongside `startServer()` (the real `ensureConnected()` + `app.listen()` path used by `npx pnpm start`) precisely so tests can `request(buildApp())` with `supertest` without connecting to Telegram or binding a real port. `startServer()`/`main` only runs when `server.ts` is executed directly (`require.main === module` guard), never merely on import — this is also why `test/server.test.ts` can `jest.resetModules()` + re-`require('../src/server')` inside an isolated `describe` block to exercise the dev auto-fill behavior (`config.isDev` is computed once per module load, from `process.env.NODE_ENV` at that moment) without affecting other tests in the file.
+
+`src/login.ts` (interactive CLI login script) is intentionally left without tests — it's a one-off manual script (prompts for phone/2FA/code, calls `process.exit`), not meaningfully unit-testable without a real Telegram account.
 
 ## Configuration
 
@@ -129,6 +171,8 @@ Any new route that fetches and returns data from the Telegram API (listings, sea
 
 Every route lives in its own file under `src/routes/` (e.g. `list-videos.route.js`, `stream-video.route.js`), mounted in `src/routes/index.js`. Every route added must get an entry in **`docs/ROUTES.md`** with: purpose, accepted query params, and whether it's Privada (requires the `Authorization` header) or Pública/hybrid (also reachable via a signed URL, like the streaming route). `README.md` intentionally stays high-level (setup, auth model, a one-line route index linking to `docs/ROUTES.md`) — don't re-add per-route JSON examples there; that detail belongs in `docs/ROUTES.md` so the README doesn't balloon as routes are added.
 
+**Keep `docs/insomnia/Insomnia.yaml` in sync with `docs/ROUTES.md`**: any change to `docs/ROUTES.md` (a new route, or an edit to an existing route's purpose, query params, access level, or response shape) must be mirrored the same session in the matching request inside `docs/insomnia/Insomnia.yaml` — its per-request `description` fields (and query-param `description`s) are a mirror of `docs/ROUTES.md`, not an independent source of truth. A new route also needs a new request added to the `collection` array (same pattern as the existing seven: `url`, `name`, `meta`, `method`, `parameters` with `disabled: true` placeholders, `settings`). Never let the two docs drift — `docs/ROUTES.md` is authoritative; the Insomnia file is a derived, importable copy of the same content.
+
 ### Doc file naming convention
 
 Files whose purpose is to document something (e.g. `docs/ROUTES.md`) use `SNAKE_CASE` + uppercase. This does **not** apply to root files whose exact name/casing is mandated by external tooling — `README.md` (GitHub/npm convention), `CLAUDE.md` (loaded by Claude Code specifically), `AGENTS.md` (read by other agent tooling) keep their conventional names as-is. When adding a new doc file under `docs/`, name it accordingly (e.g. `docs/DEPLOYMENT.md`, not `docs/deployment.md` or `docs/deploy-notes.md`).
@@ -167,8 +211,9 @@ Husky manages a `pre-commit` hook (`.husky/pre-commit`) that runs, in order:
 
 1. `npx pnpm lint-staged` — lints and formats staged files.
 2. `npx pnpm typecheck` — full-project type check.
+3. `npx pnpm test` — full Jest suite (see "Testing" above).
 
-Both must pass for the commit to go through.
+All three must pass for the commit to go through.
 
 ## Commit Guidelines
 

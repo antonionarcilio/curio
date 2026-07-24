@@ -5,7 +5,14 @@ meta:
   id: wrk_da408a30875f4fdfabe964a34e520835
   created: 1784930713129
   modified: 1784933376599
-  description: ""
+  description: |-
+    API HTTP que transmite vídeos guardados no Telegram (canais privados ou "Saved Messages") via MTProto/GramJS, com suporte a Range requests.
+
+    **Antes de usar**: no environment `Base Environment`, configure `BASE_URL` (default `http://localhost:8787`) e o header `Authorization: Bearer <ACCESS_TOKEN>` (ou variável de environment equivalente) — todas as rotas exigem esse token, exceto a rota de streaming quando acessada via URL assinada (`?exp=&sig=`).
+
+    **Cache**: `/videos`, `/channels`, `/channels/:channelId/videos`, `/list/:chatId` e a resolução de metadados de `/video/:chatId/:messageId` usam cache em memória com TTL (`CACHE_TTL_MS`, default 3 min). Use `POST /cache/purge` pra forçar dados frescos.
+
+    Documentação completa e detalhada de cada rota: `docs/ROUTES.md` no repositório.
 collection:
   - url: "{{ _.BASE_URL }}/routes"
     name: routes
@@ -14,7 +21,14 @@ collection:
       created: 1784930713364
       modified: 1784930970420
       isPrivate: false
-      description: "lista todas as rotas registradas no servidor (introspecção de router.stack em tempo de execução — nunca fica desatualizada)."
+      description: |-
+        **Propósito**: lista todas as rotas registradas no servidor (introspecção de `router.stack` em tempo de execução — nunca fica desatualizada conforme rotas são adicionadas/removidas).
+
+        **Acesso**: Privada.
+
+        **Query params**: nenhum.
+
+        **Resposta**: `[{ "method": "GET", "path": "/videos" }, ...]`
       sortKey: -1784930713364
     method: GET
     settings:
@@ -32,7 +46,20 @@ collection:
       created: 1784930998784
       modified: 1784932822596
       isPrivate: false
-      description: "lista os canais/supergrupos de que você faz parte. Filtros: channel_id (exato, ignora o -), channel_title (contém, case-insensitive, sem acentos). Paginação em memória via page/per_page."
+      description: |-
+        **Propósito**: lista os canais/supergrupos de que você faz parte.
+
+        **Acesso**: Privada.
+
+        **Query params**:
+        - `limit` (default `100`) — limita diálogos escaneados no total (canais + grupos + conversas, não só canais); `limit=5` pode devolver menos de 5 canais se nem todos os 5 diálogos mais recentes forem canais.
+        - `channel_id` — filtra por ID exato do canal (compara só dígitos, `-100...` e `100...` casam igual).
+        - `channel_title` — filtra por título contendo o termo (case-insensitive, sem diferenciar acentos). Se ambos os filtros forem informados, é AND.
+        - `page` / `per_page` (`per_page` até `100`) — ativa modo paginado (envelope). Sem nenhum dos dois, resposta é array plano. Passando só `page`, `per_page` assume o valor de `limit`. Paginação em memória sobre a lista já buscada.
+
+        **Resposta**: sem paginação, `[{ "channel_id": "...", "channel_title": "..." }, ...]`. Com paginação, `{ data, page, per_page, total, total_pages }`.
+
+        **Nomenclatura**: usa `channel_id`/`channel_title` (não `chat_id`/`chat_title`) porque só lida com peers do tipo `Channel`.
       sortKey: -1784931209194
     method: GET
     parameters:
@@ -71,7 +98,19 @@ collection:
       created: 1784931131777
       modified: 1784931787762
       isPrivate: false
-      description: "percorre todos os seus chats/canais (getDialogs) e lista os vídeos encontrados em cada um, já com a URL de streaming pronta (assinada). Busca por chat é paralelizada (até TELEGRAM_FETCH_CONCURRENCY chats simultâneos, default 5). Filtros: chat_id (exato), chat_title (contém, case-insensitive, sem acentos), file_name (contém, case-insensitive, sem acentos) — todos AND. Paginação em memória via page/per_page."
+      description: |-
+        **Propósito**: percorre todos os seus chats/canais (`getDialogs`) e lista os vídeos encontrados em cada um, já com a URL de streaming pronta (assinada). Busca por chat é paralelizada (até `TELEGRAM_FETCH_CONCURRENCY` chats simultâneos, default 5).
+
+        **Acesso**: Privada.
+
+        **Query params**:
+        - `limit` (default `100`) — máximo de vídeos por chat, passado direto pro filtro nativo do Telegram (`InputMessagesFilterVideo`). Não é um cap total da resposta: com `limit=1` e 26 chats com vídeo, a resposta traz até 26 itens (um por chat).
+        - `chat_id` — filtra por correspondência exata do ID do chat.
+        - `chat_title` — filtra por `chat_title` contendo o termo (case-insensitive, sem diferenciar acentos).
+        - `file_name` — filtra por `file_name` contendo o termo (mesmo tipo de match). Filtros combinam com AND quando mais de um é informado.
+        - `page` / `per_page` (`per_page` até `100`) — corte em memória sobre o array já agregado e filtrado (não existe paginação nativa "todos os vídeos de todos os chats" no Telegram). Passando só `page`, `per_page` assume o valor de `limit`.
+
+        **Resposta**: sem paginação, array de `{ chat_id, chat_title, message_id, file_name, size, mime_type, date, url }`. Com paginação, `{ data, page, per_page, total, total_pages }`.
       sortKey: -1784931131777
     method: GET
     parameters:
@@ -114,7 +153,19 @@ collection:
       created: 1784931286611
       modified: 1784931861463
       isPrivate: false
-      description: "lista os vídeos de um canal específico. Paginação nativa (usa offsetId/addOffset do Telegram) — total/total_pages vêm da contagem real do Telegram. Com file_name, o filtro é em memória sobre todo o conjunto (até limit)."
+      description: |-
+        **Propósito**: lista os vídeos de um canal específico.
+
+        **Acesso**: Privada.
+
+        **Query params**:
+        - `limit` (default `100`) — máximo de vídeos a buscar.
+        - `file_name` — filtra por `file_name` contendo o termo (case-insensitive, sem diferenciar acentos).
+        - `page` / `per_page` (`per_page` até `100`) — ativa modo paginado.
+
+        **Paginação nativa, exceto com `file_name`**: sem filtro de texto, cada página é buscada direto do Telegram via `offsetId`/`addOffset` (`total`/`total_pages` vêm da contagem real dele). Com `file_name`, a busca olha todo o conjunto (até `limit`) antes de filtrar e paginar em memória — senão a busca não encontraria vídeos fora da janela de uma única página nativa.
+
+        **Resposta**: sem paginação, `{ channel_id, channel_title, data: [{ message_id, file_name, size, mime_type, date, url }] }`. Com paginação, `{ channel_id, channel_title, data, page, per_page, total, total_pages }`.
       sortKey: -1784931286611
     method: GET
     parameters:
@@ -124,15 +175,15 @@ collection:
         disabled: true
       - name: per_page
         value: ""
-        description: "itens por página (máx 100)"
+        description: "itens por página (até 100). Se omitido, herda o valor de limit quando page é informado."
         disabled: true
       - name: page
         value: ""
-        description: "número da página (default 1)"
+        description: "número da página (default 1). Paginação nativa via offsetId/addOffset do Telegram, exceto quando file_name é usado (aí vira em memória)."
         disabled: true
       - name: file_name
         value: ""
-        description: "filtra por file_name contendo o termo (case-insensitive, sem acentos)"
+        description: "filtra por file_name contendo o termo (case-insensitive, sem acentos). Força paginação em memória em vez de nativa."
         disabled: true
     settings:
       renderRequestBody: true
@@ -149,7 +200,14 @@ collection:
       created: 1784932864371
       modified: 1784934028112
       isPrivate: false
-      description: "zera imediatamente todo o cache em memória usado pelas rotas de leitura (/videos, /channels, /channels/:channelId/videos, /list/:chatId, e a resolução de metadados de /video/:chatId/:messageId) — a próxima chamada a qualquer uma delas busca dados frescos do Telegram, ignorando o TTL (CACHE_TTL_MS) ainda em vigor. Útil pra forçar atualização depois de enviar um vídeo novo sem esperar o TTL expirar, sem precisar reiniciar o servidor."
+      description: |-
+        **Propósito**: zera imediatamente todo o cache em memória usado pelas rotas de leitura (`/videos`, `/channels`, `/channels/:channelId/videos`, `/list/:chatId`, e a resolução de metadados de `/video/:chatId/:messageId`) — a próxima chamada a qualquer uma delas busca dados frescos do Telegram, ignorando o TTL (`CACHE_TTL_MS`) ainda em vigor. Útil pra forçar atualização depois de enviar um vídeo novo, sem esperar o TTL expirar nem reiniciar o servidor.
+
+        **Acesso**: Privada.
+
+        **Query params**: nenhum.
+
+        **Resposta**: `{ "purged": true }`.
       sortKey: -1784930713264
     method: POST
     settings:
@@ -167,7 +225,18 @@ collection:
       created: 1784933018622
       modified: 1784933303191
       isPrivate: false
-      description: "rota de streaming — serve os bytes do vídeo com suporte a Range (206 Partial Content), buscando sob demanda do Telegram via iterDownload, sem baixar o arquivo inteiro em disco. Aceita Authorization (privada) ou ?exp=&sig= (URL assinada pública)."
+      description: |-
+        **Propósito**: rota de streaming de fato — serve os bytes do vídeo com suporte a `Range` (206 Partial Content), buscando sob demanda do Telegram via `iterDownload`, sem baixar o arquivo inteiro em disco.
+
+        **Acesso**: Híbrida — aceita **Privada** (header `Authorization: Bearer`) **ou Pública (URL assinada)** via `?exp=&sig=`. É a única rota que aceita esse segundo modo, porque precisa ser abrível direto por VLC/`<video src>`/navegador, que não anexam headers customizados numa navegação simples.
+
+        **Query params**:
+        - `exp` — timestamp Unix de expiração (obrigatório via signed URL).
+        - `sig` — HMAC-SHA256 de `chatId:messageId:exp` (ver `src/signedUrl.js`). Ambos são gerados automaticamente pelas rotas `/videos` e `/channels/:channelId/videos`; não monte esse par manualmente.
+
+        **Cache**: a resolução de metadados do vídeo (mensagem/documento) é cacheada por `chatId:messageId` — Range requests subsequentes no mesmo vídeo (seeks do player) não repetem o lookup no Telegram. Os bytes em si (`iterDownload`) nunca são cacheados.
+
+        **Resposta**: stream binário do vídeo (`200` ou `206`), não JSON.
       sortKey: -1784933018622
     method: GET
     parameters:
@@ -194,7 +263,16 @@ collection:
       created: 1784933419110
       modified: 1784933892685
       isPrivate: false
-      description: "lista vídeos de qualquer chat (não só canais) por chatId — útil pra descobrir o messageId de um vídeo em \"Saved Messages\" (chatId = me) ou em qualquer conversa."
+      description: |-
+        **Propósito**: lista vídeos de qualquer chat (não só canais) por `chatId` — útil pra descobrir o `messageId` de um vídeo em "Saved Messages" (`chatId = me`) ou em qualquer conversa.
+
+        **Acesso**: Privada.
+
+        **Query params**:
+        - `limit` (default `100`) — máximo de vídeos a buscar.
+        - `page` / `per_page` (`per_page` até `100`) — paginação nativa, igual `/channels/:channelId/videos` (offsetId/addOffset do Telegram).
+
+        **Resposta**: sem paginação, array de `{ message_id, file_name, size, mime_type, date }` (sem `url` — rota só de descoberta). Com paginação, `{ data, page, per_page, total, total_pages }`.
       sortKey: -1784933419110
     method: GET
     parameters:

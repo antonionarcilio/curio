@@ -61,14 +61,19 @@ function requireToken(req: Request, res: Response, next: NextFunction): void {
   res.status(401).json({ error: 'Token inválido ou ausente' });
 }
 
-async function main(): Promise<void> {
-  await ensureConnected();
-
+function buildApp() {
   const app = express();
   app.use(requireToken);
   app.use(router);
+  return app;
+}
 
-  app.listen(config.port, () => {
+async function startServer() {
+  await ensureConnected();
+
+  const app = buildApp();
+
+  return app.listen(config.port, () => {
     console.log(`telegram-cdn rodando em http://localhost:${config.port}`);
     if (config.isDev) {
       console.log('Modo dev: Authorization é preenchido automaticamente se omitido.');
@@ -79,7 +84,11 @@ async function main(): Promise<void> {
   });
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (require.main === module) {
+  startServer().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
+
+export { buildApp, extractBearerToken, requireToken, startServer, timingSafeEqualStrings, verifySignedStream };

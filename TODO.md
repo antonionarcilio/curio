@@ -1,0 +1,2 @@
+- [ ] Add testes in all routes
+- [ ] Create upload route from the channel or saves message

@@ -20,6 +20,8 @@ const config = {
   // Fail-closed: só é "dev" com NODE_ENV=development explícito. NODE_ENV
   // ausente/qualquer outro valor cai no modo estrito (produção).
   isDev: nodeEnv === 'development',
+  cacheTtlMs: Number(process.env.CACHE_TTL_MS || 180_000),
+  fetchConcurrency: Number(process.env.TELEGRAM_FETCH_CONCURRENCY || 5),
 };
 
 export = config;

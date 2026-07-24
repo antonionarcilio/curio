@@ -20,8 +20,10 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "input": "^1.0.1",
+    "p-limit": "3.1.0",
     "telegram": "^2.26.16",
-    "teleproto": "^1.228.4"
+    "teleproto": "^1.228.4",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

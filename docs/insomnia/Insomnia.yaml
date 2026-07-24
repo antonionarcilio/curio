@@ -1,0 +1,235 @@
+type: collection.insomnia.rest/5.0
+schema_version: "5.1"
+name: endpoints - dev
+meta:
+  id: wrk_da408a30875f4fdfabe964a34e520835
+  created: 1784930713129
+  modified: 1784933376599
+  description: ""
+collection:
+  - url: "{{ _.BASE_URL }}/routes"
+    name: routes
+    meta:
+      id: req_39f181eba45146418b03badfd77f9ee7
+      created: 1784930713364
+      modified: 1784930970420
+      isPrivate: false
+      description: "lista todas as rotas registradas no servidor (introspecção de router.stack em tempo de execução — nunca fica desatualizada)."
+      sortKey: -1784930713364
+    method: GET
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: "{{ _.BASE_URL }}/channels"
+    name: channels
+    meta:
+      id: req_662d7a0f0cac4f608d87c7afb24e7736
+      created: 1784930998784
+      modified: 1784932822596
+      isPrivate: false
+      description: "lista os canais/supergrupos de que você faz parte. Filtros: channel_id (exato, ignora o -), channel_title (contém, case-insensitive, sem acentos). Paginação em memória via page/per_page."
+      sortKey: -1784931209194
+    method: GET
+    parameters:
+      - name: limit
+        value: "10"
+        description: "máximo de diálogos escaneados no total (default 100). Não é só canais — conta todos os diálogos (canais + grupos + conversas)."
+        disabled: true
+      - name: per_page
+        value: "5"
+        description: "itens por página (até 100). Ativa modo paginado (envelope com data, page, per_page, total, total_pages)."
+        disabled: true
+      - name: page
+        value: "2"
+        description: "número da página (default 1). Só funciona se per_page ou page forem informados."
+        disabled: true
+      - name: channel_id
+        value: "1002283515431"
+        description: "filtra por ID exato do canal (compara só dígitos, -100... e 100... casam igual)."
+        disabled: true
+      - name: channel_title
+        value: dev
+        description: "filtra por título contendo o termo (case-insensitive, sem diferenciar acentos)."
+        disabled: true
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: "{{ _.BASE_URL }}/videos"
+    name: videos
+    meta:
+      id: req_928ee1ac5380470982b7b2811180626c
+      created: 1784931131777
+      modified: 1784931787762
+      isPrivate: false
+      description: "percorre todos os seus chats/canais (getDialogs) e lista os vídeos encontrados em cada um, já com a URL de streaming pronta (assinada). Busca por chat é paralelizada (até TELEGRAM_FETCH_CONCURRENCY chats simultâneos, default 5). Filtros: chat_id (exato), chat_title (contém, case-insensitive, sem acentos), file_name (contém, case-insensitive, sem acentos) — todos AND. Paginação em memória via page/per_page."
+      sortKey: -1784931131777
+    method: GET
+    parameters:
+      - name: limit
+        value: "10"
+        description: "máximo de vídeos por chat (default 100). Passado direto pro filtro nativo do Telegram (InputMessagesFilterVideo)."
+        disabled: true
+      - name: per_page
+        value: "2"
+        description: "itens por página (até 100). Ativa modo paginado (envelope com data, page, per_page, total, total_pages). Corte em memória, não nativo."
+        disabled: true
+      - name: page
+        value: "5"
+        description: "número da página (default 1). Só funciona se per_page ou page forem informados."
+        disabled: true
+      - name: file_name
+        value: js
+        description: "filtra por file_name contendo o termo (case-insensitive, sem diferenciar acentos)."
+        disabled: true
+      - name: chat_id
+        value: ""
+        description: "filtra por correspondência exata do ID do chat."
+        disabled: true
+      - name: chat_title
+        value: course
+        description: "filtra por chat_title contendo o termo (case-insensitive, sem diferenciar acentos)."
+        disabled: true
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: "{{ _.BASE_URL }}/channels/1004325653681/videos"
+    name: videos by channel
+    meta:
+      id: req_5cb1eba140344f5eb296a3542ea8cb5a
+      created: 1784931286611
+      modified: 1784931861463
+      isPrivate: false
+      description: "lista os vídeos de um canal específico. Paginação nativa (usa offsetId/addOffset do Telegram) — total/total_pages vêm da contagem real do Telegram. Com file_name, o filtro é em memória sobre todo o conjunto (até limit)."
+      sortKey: -1784931286611
+    method: GET
+    parameters:
+      - name: limit
+        value: ""
+        description: "máximo de vídeos a buscar (default 100)"
+        disabled: true
+      - name: per_page
+        value: ""
+        description: "itens por página (máx 100)"
+        disabled: true
+      - name: page
+        value: ""
+        description: "número da página (default 1)"
+        disabled: true
+      - name: file_name
+        value: ""
+        description: "filtra por file_name contendo o termo (case-insensitive, sem acentos)"
+        disabled: true
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: "{{ _.BASE_URL }}/cache/purge"
+    name: purge cache
+    meta:
+      id: req_aa49298d41af477fa834810a393a12b5
+      created: 1784932864371
+      modified: 1784934028112
+      isPrivate: false
+      description: "zera imediatamente todo o cache em memória usado pelas rotas de leitura (/videos, /channels, /channels/:channelId/videos, /list/:chatId, e a resolução de metadados de /video/:chatId/:messageId) — a próxima chamada a qualquer uma delas busca dados frescos do Telegram, ignorando o TTL (CACHE_TTL_MS) ainda em vigor. Útil pra forçar atualização depois de enviar um vídeo novo sem esperar o TTL expirar, sem precisar reiniciar o servidor."
+      sortKey: -1784930713264
+    method: POST
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: "{{ _.BASE_URL }}/video/-1004325653681/6"
+    name: video
+    meta:
+      id: req_85ea8a5fd70d4699b3acce2dc274a9dd
+      created: 1784933018622
+      modified: 1784933303191
+      isPrivate: false
+      description: "rota de streaming — serve os bytes do vídeo com suporte a Range (206 Partial Content), buscando sob demanda do Telegram via iterDownload, sem baixar o arquivo inteiro em disco. Aceita Authorization (privada) ou ?exp=&sig= (URL assinada pública)."
+      sortKey: -1784933018622
+    method: GET
+    parameters:
+      - name: exp
+        value: "1784936362"
+        description: "timestamp Unix de expiração (obrigatório via signed URL)"
+        disabled: true
+      - name: sig
+        value: 0b7ac75b6d343e5bd4c45d0f51fbd5e41282326caed97042a37f47b3920b979f
+        description: "HMAC-SHA256 de chatId:messageId:exp (ver src/signedUrl.js)"
+        disabled: true
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: "{{ _.BASE_URL }}/list/1004325653681"
+    name: list videos by chat id
+    meta:
+      id: req_45e29a7259a04c96bcb3d1ef330d5bd6
+      created: 1784933419110
+      modified: 1784933892685
+      isPrivate: false
+      description: "lista vídeos de qualquer chat (não só canais) por chatId — útil pra descobrir o messageId de um vídeo em \"Saved Messages\" (chatId = me) ou em qualquer conversa."
+      sortKey: -1784933419110
+    method: GET
+    parameters:
+      - name: limit
+        value: "100"
+        description: "máximo de vídeos a buscar (default 100)"
+        disabled: true
+      - name: page
+        value: "1"
+        description: "número da página (default 1). Paginação nativa igual /channels/:channelId/videos."
+        disabled: true
+      - name: per_page
+        value: "10"
+        description: "itens por página (máx 100)"
+        disabled: true
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+cookieJar:
+  name: Default Jar
+  meta:
+    id: jar_7879e147c464f669c5f3e3e5017c9360f2e7351f
+    created: 1784930713131
+    modified: 1784930713131
+environments:
+  name: Base Environment
+  meta:
+    id: env_7879e147c464f669c5f3e3e5017c9360f2e7351f
+    created: 1784930713130
+    modified: 1784930931849
+    isPrivate: false
+  data:
+    BASE_URL: http://localhost:8787

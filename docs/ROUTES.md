@@ -9,18 +9,18 @@ com expiração de 1h (nunca é "sem autenticação nenhuma"). Veja
 esquema de auth.
 
 Todas as rotas que fazem leitura no Telegram (`/videos`, `/channels`,
-`/channels/:chatId/videos`, `/list/:chatId` e a resolução de metadados de
+`/channels/:channelId/videos`, `/list/:chatId` e a resolução de metadados de
 `/video/:chatId/:messageId`) usam um cache em memória com TTL configurável
 (`CACHE_TTL_MS`, default 3 min — ver `.env.example`). Chamadas repetidas
 dentro da janela de TTL respondem sem round-trip ao Telegram; um vídeo novo
 enviado pode levar até esse tempo para aparecer nas listagens.
 
-### Paginação (`/videos`, `/channels`, `/channels/:chatId/videos`, `/list/:chatId`)
+### Paginação (`/videos`, `/channels`, `/channels/:channelId/videos`, `/list/:chatId`)
 
 Essas quatro rotas aceitam dois pares de query params independentes:
 
 - **`limit`** (default `100`) — quantos itens são buscados/considerados. Em
-  `/videos`, `/channels/:chatId/videos` e `/list/:chatId`, é o parâmetro
+  `/videos`, `/channels/:channelId/videos` e `/list/:chatId`, é o parâmetro
   `limit` passado direto pra busca nativa de vídeo do Telegram
   (`InputMessagesFilterVideo`). Em `/channels`, é o `limit` passado pro
   `getDialogs` — como o Telegram não tem um filtro nativo de "só canais" (ao
@@ -38,7 +38,7 @@ Essas quatro rotas aceitam dois pares de query params independentes:
   continua valendo mesmo em modo paginado, a menos que `per_page` seja
   passado explicitamente (esse sempre vence).
 
-Em `/channels/:chatId/videos` e `/list/:chatId` (busca num chat só) a
+Em `/channels/:channelId/videos` e `/list/:chatId` (busca num chat só) a
 paginação é **nativa**: usa o filtro de vídeo do próprio Telegram
 (`InputMessagesFilterVideo`) com `offsetId`/`addOffset`, então o Telegram já
 devolve exatamente a página pedida — `total`/`total_pages` vêm da contagem
@@ -89,26 +89,47 @@ buscada (nativamente limitada por `limit`, ver acima).
 
 - **Propósito**: lista os canais/supergrupos de que você faz parte.
 - **Acesso**: Privada.
-- **Query params**: `limit` (opcional, default `100`); `page` / `per_page`
-  (opcionais) — ver "Paginação" acima. `limit` limita diálogos escaneados no
-  total (não só canais); a paginação em si é corte em memória sobre a lista
-  já filtrada.
-- **Resposta**: sem `page`/`per_page`, `[{ "chat_id": "...", "chat_title":
-  "..." }, ...]`. Com `page`/`per_page`, `{ data: [...mesmos itens...], page,
-  per_page, total, total_pages }`.
+- **Query params**:
+  - `limit` (opcional, default `100`) — limita diálogos escaneados no total
+    (não só canais); filtra em memória sobre a lista já buscada.
+  - `channel_id` (opcional) — filtra por correspondência exata do ID do
+    canal (compara só os dígitos, então o `-` do ID é irrelevante — `-100...`
+    ou `100...` casam igual).
+  - `channel_title` (opcional) — filtra por `channel_title` contendo o termo
+    (case-insensitive e sem diferenciar acentos, ex: `channel_title=tec` casa
+    com "Tecnoblog", "Canaltech", "TecMundo" etc.).
+  - Quando os dois filtros são informados, ambos precisam bater (AND).
+  - `page` / `per_page` (opcionais) — ver "Paginação" acima. Paginação
+    aplicada em memória sobre a lista já buscada.
+- **Resposta**: sem `page`/`per_page`, `[{ "channel_id": "...",
+  "channel_title": "..." }, ...]`. Com `page`/`per_page`, `{ data:
+  [...mesmos itens...], page, per_page, total, total_pages }`.
+- **Nomenclatura**: esta rota (e `/channels/:channelId/videos`, abaixo) usa
+  `channel_id`/`channel_title`, não `chat_id`/`chat_title` — porque só lida
+  com peers do tipo `Channel` (GramJS: `dialog.isChannel`), nunca grupos
+  comuns, chats privados ou "Saved Messages". As demais rotas (`/videos`,
+  `/list/:chatId`) podem apontar pra qualquer tipo de diálogo, por isso
+  continuam usando `chat_id`/`chat_title`.
 
-## `GET /channels/:chatId/videos`
+## `GET /channels/:channelId/videos`
 
 - **Propósito**: lista os vídeos de um canal específico.
 - **Acesso**: Privada.
-- **Query params**: `limit` (opcional, default `100`); `page` / `per_page`
-  (opcionais) — ver "Paginação" acima. Paginação nativa: cada página é
-  buscada direto do Telegram, não cortada de uma lista maior já em memória.
-- **Resposta**: sem `page`/`per_page`, `{ chat_id, chat_title, data: [{
+- **Query params**:
+  - `limit` (opcional, default `100`).
+  - `file_name` (opcional) — filtra por `file_name` contendo o termo
+    (case-insensitive e sem diferenciar acentos).
+  - `page` / `per_page` (opcionais) — ver "Paginação" acima.
+- **Paginação nativa, exceto com `file_name`**: sem filtro de texto, cada
+  página é buscada direto do Telegram (`total`/`total_pages` vêm da contagem
+  real dele). Com `file_name`, a busca precisa olhar todo o conjunto (até
+  `limit`) antes de filtrar e paginar — nesse caso o corte de página passa a
+  ser em memória sobre o resultado filtrado, senão a busca não encontraria
+  vídeos fora da janela de uma única página nativa.
+- **Resposta**: sem `page`/`per_page`, `{ channel_id, channel_title, data: [{
   message_id, file_name, size, mime_type, date, url }] }`. Com
-  `page`/`per_page`, `{ chat_id, chat_title, data: [...mesmos itens...],
-  page, per_page, total, total_pages }` — `total`/`total_pages` vêm da
-  contagem real do Telegram para aquele chat.
+  `page`/`per_page`, `{ channel_id, channel_title, data: [...mesmos
+  itens...], page, per_page, total, total_pages }`.
 
 ## `GET /list/:chatId`
 
@@ -116,9 +137,10 @@ buscada (nativamente limitada por `limit`, ver acima).
   útil pra descobrir o `messageId` de um vídeo em "Saved Messages" (`chatId
   = me`) ou em qualquer conversa.
 - **Acesso**: Privada.
-- **Query params**: `limit` (opcional, default `100`); `page` / `per_page`
-  (opcionais) — ver "Paginação" acima. Paginação nativa, igual
-  `/channels/:chatId/videos`.
+- **Query params**:
+  - `limit` (opcional, default `100`).
+  - `page` / `per_page` (opcionais) — ver "Paginação" acima. Paginação
+    nativa, igual `/channels/:channelId/videos`.
 - **Resposta**: sem `page`/`per_page`, array de `{ message_id, file_name,
   size, mime_type, date }` (sem `url` — essa rota é só pra descoberta, sem o
   wrapper de canal). Com `page`/`per_page`, `{ data: [...mesmos itens...],
@@ -133,12 +155,27 @@ buscada (nativamente limitada por `limit`, ver acima).
   Pública (URL assinada)** via `?exp=...&sig=...`. É a única rota que aceita
   o segundo modo, porque precisa ser abrível direto por VLC/`<video src>`/
   navegador, que não anexam headers customizados numa navegação simples.
-- **Query params**: `exp` (timestamp Unix de expiração) e `sig` (HMAC-SHA256
-  de `chatId:messageId:exp`, ver `src/signedUrl.js`) — gerados
-  automaticamente pelas rotas `/videos` e `/channels/:chatId/videos`; não
-  monte esse par manualmente.
+- **Query params**:
+  - `exp` (obrigatório via signed URL) — timestamp Unix de expiração.
+  - `sig` (obrigatório via signed URL) — HMAC-SHA256 de `chatId:messageId:exp`
+    (ver `src/signedUrl.js`).
+  - Gerados automaticamente pelas rotas `/videos` e `/channels/:channelId/videos`;
+    não monte esse par manualmente.
 - **Cache**: a resolução de metadados do vídeo (mensagem/documento) é
   cacheada por `chatId:messageId` — Range requests subsequentes no mesmo
   vídeo (seeks do player) não repetem o lookup no Telegram. Os bytes em si
   (`iterDownload`) nunca são cacheados, sempre buscados ao vivo.
 - **Resposta**: stream binário do vídeo (`200` ou `206`), não JSON.
+
+## `POST /cache/purge`
+
+- **Propósito**: zera imediatamente todo o cache em memória usado pelas
+  rotas de leitura (`/videos`, `/channels`, `/channels/:channelId/videos`,
+  `/list/:chatId`, e a resolução de metadados de
+  `/video/:chatId/:messageId`) — a próxima chamada a qualquer uma delas busca
+  dados frescos do Telegram, ignorando o TTL (`CACHE_TTL_MS`) ainda em vigor.
+  Útil pra forçar atualização depois de enviar um vídeo novo sem esperar o
+  TTL expirar, sem precisar reiniciar o servidor.
+- **Acesso**: Privada.
+- **Query params**: nenhum.
+- **Resposta**: `{ "purged": true }`.

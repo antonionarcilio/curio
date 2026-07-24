@@ -55,7 +55,7 @@ por URL (VLC, `<video src>`), que não enviam headers customizados numa
 navegação simples. Em vez de aceitar o `ACCESS_TOKEN` mestre na query string
 (o que o exporia por completo caso a URL vaze em algum lugar — histórico,
 logs, etc.), ela aceita uma **URL assinada e com expiração** (`?exp=...&sig=...`),
-gerada pelas rotas de descoberta (`/videos`, `/channels/:chatId/videos`) e
+gerada pelas rotas de descoberta (`/videos`, `/channels/:channelId/videos`) e
 válida só para aquele `chatId`/`messageId` específico, por 1 hora. Assim, se
 uma dessas URLs vazar, o dano fica limitado àquele vídeo até a assinatura
 expirar — o token mestre nunca é exposto.
@@ -72,7 +72,7 @@ explicitamente que está em dev.
 ## Rotas
 
 O servidor expõe: `/routes` (autodescoberta), `/videos` (todos os vídeos
-acessíveis, com URL pronta), `/channels` (seus canais), `/channels/:chatId/videos`,
+acessíveis, com URL pronta), `/channels` (seus canais), `/channels/:channelId/videos`,
 `/list/:chatId` (descoberta por chat), e `/video/:chatId/:messageId` (streaming
 de fato). Referência completa — propósito, query params aceitos e se cada
 rota é pública ou privada — em **[`docs/ROUTES.md`](docs/ROUTES.md)**.

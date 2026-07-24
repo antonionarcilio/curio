@@ -43,9 +43,13 @@ type VideoListEntry = {
   date: number;
 };
 
+// /channels e /channels/:chatId/videos só lidam com peers do tipo Channel
+// (GramJS: dialog.isChannel) — por isso usam channel_id/channel_title, e não
+// chat_id/chat_title (esse último é reservado pra rotas que podem apontar
+// pra qualquer tipo de diálogo: grupo comum, chat privado, "me").
 type ChannelListEntry = {
-  chat_id: string;
-  chat_title: string;
+  channel_id: string;
+  channel_title: string;
 };
 
 type VideoFetchParams = { limit: number; offset: number };
@@ -53,8 +57,8 @@ type VideoFetchParams = { limit: number; offset: number };
 type VideoFetchResult = { items: VideoListItem[]; total: number };
 
 type ChannelVideosResult = {
-  chat_id: string;
-  chat_title: string;
+  channel_id: string;
+  channel_title: string;
   items: VideoListItem[];
   total: number;
 };
@@ -141,8 +145,8 @@ async function listChannelsUncached(limit: number): Promise<ChannelListEntry[]> 
   return dialogs
     .filter((dialog) => dialog.isChannel)
     .map((dialog) => ({
-      chat_id: (dialog.id ?? '').toString(),
-      chat_title: dialog.title || dialog.name || (dialog.id ?? '').toString(),
+      channel_id: (dialog.id ?? '').toString(),
+      channel_title: dialog.title || dialog.name || (dialog.id ?? '').toString(),
     }));
 }
 
@@ -151,10 +155,10 @@ const listChannels = withCache(config.cacheTtlMs, (limit: number) => `${limit}`,
 async function getChannelVideosUncached(chatId: string, params: VideoFetchParams): Promise<ChannelVideosResult> {
   const tg = await ensureConnected();
   const entity = await tg.getEntity(chatId);
-  const chatTitle = ('title' in entity && entity.title) || ('username' in entity && entity.username) || chatId;
+  const channelTitle = ('title' in entity && entity.title) || ('username' in entity && entity.username) || chatId;
   const { items, total } = await listVideos(chatId, params);
 
-  return { chat_id: chatId.toString(), chat_title: chatTitle, items, total };
+  return { channel_id: chatId.toString(), channel_title: channelTitle, items, total };
 }
 
 const getChannelVideos = withCache(

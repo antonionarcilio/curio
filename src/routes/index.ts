@@ -3,6 +3,7 @@ import channelVideosRouter from './channel-videos.route';
 import listChannelsRouter from './list-channels.route';
 import listChatVideosRouter from './list-chat-videos.route';
 import listVideosRouter from './list-videos.route';
+import purgeCacheRouter from './purge-cache.route';
 import streamVideoRouter from './stream-video.route';
 
 const router = express.Router();
@@ -11,6 +12,7 @@ router.use(listVideosRouter);
 router.use(listChannelsRouter);
 router.use(channelVideosRouter);
 router.use(listChatVideosRouter);
+router.use(purgeCacheRouter);
 router.use(streamVideoRouter);
 
 type RouteLayer = {

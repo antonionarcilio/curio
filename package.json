@@ -1,0 +1,41 @@
+{
+  "name": "telegram-cdn",
+  "version": "0.1.0",
+  "description": "HTTP server that streams videos stored in Telegram (private channels / Saved Messages) with Range request support",
+  "main": "dist/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc",
+    "login": "tsx src/login.ts",
+    "start": "node dist/server.js",
+    "dev": "NODE_ENV=development nodemon --exec tsx src/server.ts",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "big-integer": "^1.6.48",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "input": "^1.0.1",
+    "telegram": "^2.26.16",
+    "teleproto": "^1.228.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/express": "^4.17.25",
+    "@types/node": "^26.1.1",
+    "eslint": "^9.39.4",
+    "globals": "^17.7.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.2",
+    "nodemon": "^3.1.4",
+    "prettier": "^3.5.3",
+    "prettier-plugin-organize-imports": "^4.3.0",
+    "tsx": "^4.23.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.65.0"
+  }
+}

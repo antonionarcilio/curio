@@ -1,0 +1,14 @@
+# Ignore markdown
+*.md
+
+# Ignore .env
+*.env
+
+# Ignora arquivos de build e dependências
+node_modules/
+*.tsbuildinfo
+dist/
+.agents/
+.claude/
+.husky/
+

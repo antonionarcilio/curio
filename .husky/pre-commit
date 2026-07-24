@@ -5,3 +5,6 @@ npx pnpm lint-staged
 
 # Typecheck completo do projeto
 npx pnpm typecheck
+
+# Suíte de testes completa
+npx pnpm test

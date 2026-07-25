@@ -7,13 +7,15 @@
   "scripts": {
     "build": "tsc",
     "login": "tsx src/login.ts",
+    "smoke-test": "tsx scripts/smoke-test.ts",
     "start": "node dist/server.js",
     "dev": "NODE_ENV=development nodemon --exec tsx src/server.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.scripts.json",
     "test": "jest",
+    "test:coverage": "jest --coverage",
     "test:watch": "jest --watch",
     "prepare": "husky"
   },

@@ -40,7 +40,7 @@ There is no separate build-step-only command beyond this: `npx pnpm start` runs 
 npx pnpm lint           # run ESLint
 npx pnpm format          # format the codebase with Prettier
 npx pnpm format:check   # check formatting without writing
-npx pnpm typecheck      # tsc --noEmit
+npx pnpm typecheck      # tsc --noEmit against src/, then again against src/+scripts/ via tsconfig.scripts.json
 ```
 
 ### Testing
@@ -48,7 +48,15 @@ npx pnpm typecheck      # tsc --noEmit
 ```bash
 npx pnpm test           # run the Jest test suite once
 npx pnpm test:watch     # Jest in watch mode
+npx pnpm test:coverage  # Jest with coverage report
+npx pnpm smoke-test     # manual, opt-in: hits the real Telegram API (see "Smoke test manual" below)
 ```
+
+### Coverage
+
+The project requires a minimum of **90% code coverage** across all metrics (lines, branches, functions, statements). Before finishing any feature or refactor, run `npx pnpm test:coverage` and confirm the overall coverage meets this threshold. If coverage drops below 90%, add or expand tests to bring it back up before considering the work complete.
+
+This applies to all code under `src/` — test files themselves, configuration, and generated/build output are excluded from the requirement. The coverage configuration lives in `jest.config.js`; do not lower thresholds in that config without explicit written agreement from the team.
 
 ### Login flow
 
@@ -70,6 +78,12 @@ Tests live under `test/`, mirroring `src/`'s structure (`test/signed-url.test.ts
 `src/server.ts` exports `buildApp()` (a synchronous Express app factory with no I/O) alongside `startServer()` (the real `ensureConnected()` + `app.listen()` path used by `npx pnpm start`) precisely so tests can `request(buildApp())` with `supertest` without connecting to Telegram or binding a real port. `startServer()`/`main` only runs when `server.ts` is executed directly (`require.main === module` guard), never merely on import — this is also why `test/server.test.ts` can `jest.resetModules()` + re-`require('../src/server')` inside an isolated `describe` block to exercise the dev auto-fill behavior (`config.isDev` is computed once per module load, from `process.env.NODE_ENV` at that moment) without affecting other tests in the file.
 
 `src/login.ts` (interactive CLI login script) is intentionally left without tests — it's a one-off manual script (prompts for phone/2FA/code, calls `process.exit`), not meaningfully unit-testable without a real Telegram account.
+
+### Smoke test manual (API real)
+
+The mocked Jest suite protects business logic but cannot catch **contract drift**: if the `telegram` package changes its API shape in a future version, every mock still "passes" while the app breaks against the real API. `npx pnpm smoke-test` (`scripts/smoke-test.ts`) exists to catch that — it is **opt-in and manual only**, never wired into `pnpm test`, the pre-commit hook, or any CI-equivalent, because it connects to the real account configured in `.env` and depends on live network/Telegram infrastructure. Run it by hand after upgrading the `telegram` dependency, or periodically as a sanity check.
+
+It performs a real, end-to-end round trip against "Saved Messages" (`me`): calls `listChannels` to check the dialog shape, uploads `src/_assets/file_example_MP4_1920_18MG.mp4` (~17MB, under the 20MB cap) via `client.sendFile`, then runs `listVideos`/`getVideoMessage`/`client.iterDownload` against that real message to exercise the same path the streaming route uses in production (including the `big-integer` offset/limit regression guard). **The uploaded message is always deleted at the end, in a `finally` block, even if an earlier step throws** — so a run never leaves residue in the user's real Saved Messages. `scripts/` is outside `tsconfig.json`'s `include` (which stays scoped to `src/` on purpose, for `pnpm build`); it's type-checked separately via `tsconfig.scripts.json`, which `npx pnpm typecheck` also runs.
 
 ## Configuration
 

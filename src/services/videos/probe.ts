@@ -37,7 +37,7 @@ export async function probeVideoMetadata(buffer: Buffer): Promise<ProbedVideoMet
     return parseFfprobeOutput(JSON.parse(stdout) as FfprobeOutput);
   } catch {
     // ffprobe ausente/falhou — upload segue sem esses atributos explícitos,
-    // caindo de volta pro (incorreto, mas não fatal) default do GramJS.
+    // caindo de volta pro (incorreto, mas não fatal) default do TeleProto.
     return null;
   } finally {
     await fs.rm(tmpFilePath, { force: true });

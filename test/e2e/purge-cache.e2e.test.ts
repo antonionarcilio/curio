@@ -5,10 +5,8 @@ import { readFixtureState } from './helpers/shared-state';
 import { TARGETS } from './helpers/video-fixture';
 
 beforeAll(() => ensureConnected());
-// destroy() (não disconnect()) marca client._destroyed = true — sem isso o
-// _updateLoop interno do GramJS continua acordando a cada 9s pra pingar um
-// sender já desconectado, gerando "[Error: TIMEOUT]"/"Cannot log after tests
-// are done" indefinidamente e travando o processo do Jest aberto no final.
+// destroy() é o shutdown completo do cliente TeleProto; disconnect() pode
+// deixar timers/conexões internas vivos e travar o processo do Jest no final.
 afterAll(() => client.destroy());
 
 const channelTarget = TARGETS.find((target) => target.isChannel);

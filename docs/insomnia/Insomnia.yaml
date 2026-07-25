@@ -6,7 +6,7 @@ meta:
   created: 1784930713129
   modified: 1784933376599
   description: |-
-    API HTTP versionada em `/api/v1` que transmite vídeos guardados no Telegram via MTProto/GramJS, com suporte a Range requests.
+    API HTTP versionada em `/api/v1` que transmite vídeos guardados no Telegram via MTProto/TeleProto, com suporte a Range requests.
 
     Configure `BASE_URL` (default `http://localhost:8787`) e envie `Authorization: Bearer <ACCESS_TOKEN>` em todas as rotas, exceto `video/stream` e `video/dl` quando acessadas com URL assinada (`?exp=&sig=`).
 

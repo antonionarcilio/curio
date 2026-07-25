@@ -5,7 +5,7 @@ privados de que você faz parte ou em "Saved Messages" — expondo uma URL que
 pode ser aberta em qualquer player compatível com HTTP (VLC, navegador, etc.),
 com suporte a seek via Range requests.
 
-Usa [GramJS](https://gram.js.org/) autenticado como **conta de usuário**
+Usa [TeleProto](https://docs.teleproto.dev/) autenticado como **conta de usuário**
 (MTProto), já que a Bot API não enxerga o histórico de canais privados nem de
 Saved Messages, e limita downloads a 20MB.
 

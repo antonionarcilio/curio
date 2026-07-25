@@ -7,13 +7,11 @@ import { readFixtureState } from './helpers/shared-state';
 import { TARGETS, TEST_VIDEO_PATH } from './helpers/video-fixture';
 
 beforeAll(() => ensureConnected());
-// destroy() (não disconnect()) marca client._destroyed = true — sem isso o
-// _updateLoop interno do GramJS continua acordando a cada 9s pra pingar um
-// sender já desconectado, gerando "[Error: TIMEOUT]"/"Cannot log after tests
-// are done" indefinidamente e travando o processo do Jest aberto no final.
+// destroy() é o shutdown completo do cliente TeleProto; disconnect() pode
+// deixar timers/conexões internas vivos e travar o processo do Jest no final.
 afterAll(() => client.destroy());
 
-// Mesma lógica de stream-video (código compartilhado em src/http/video-stream.ts),
+// Mesma lógica de stream-video (código compartilhado em src/services/videos/stream.ts),
 // só muda o Content-Disposition — full-body byte-a-byte já foi provado lá, aqui
 // só range (evita baixar os ~177MB de novo em toda combinação).
 describe.each(TARGETS)('GET /api/v1/video/dl/:chatId/:messageId (e2e) — $label', ({ chatId }) => {

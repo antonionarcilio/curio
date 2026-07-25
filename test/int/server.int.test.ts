@@ -2,7 +2,7 @@ import { createSignedUrl } from '@/signed-url';
 import request from 'supertest';
 
 jest.mock('@/telegram-client', () => ({
-  client: { iterDownload: jest.fn() },
+  client: { _media: { getFile: jest.fn() } },
   ensureConnected: jest.fn().mockResolvedValue(undefined),
   getVideoMessage: jest.fn().mockRejectedValue(new Error('not used in these tests')),
   listAllVideos: jest.fn().mockResolvedValue([]),

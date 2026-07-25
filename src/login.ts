@@ -1,6 +1,6 @@
 import input from 'input';
-import { TelegramClient } from 'telegram';
-import { StringSession } from 'telegram/sessions';
+import { TelegramClient } from 'teleproto';
+import { StringSession } from 'teleproto/sessions';
 import config from './config';
 
 async function main(): Promise<void> {

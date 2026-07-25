@@ -1,7 +1,7 @@
 import pLimit from 'p-limit';
-import { Api, TelegramClient } from 'telegram';
-import { CustomFile } from 'telegram/client/uploads';
-import { StringSession } from 'telegram/sessions';
+import { Api, TelegramClient } from 'teleproto';
+import { CustomFile } from 'teleproto/client/uploads';
+import { StringSession } from 'teleproto/sessions';
 import config from './config';
 import { probeVideoMetadata } from './services/videos/probe';
 import { clearAllCaches, withCache } from './utils/ttl-cache';
@@ -63,7 +63,7 @@ type VideoListEntry = {
   description: string | null;
 };
 
-// /channels só lida com peers do tipo Channel (GramJS: dialog.isChannel), por
+// /channels só lida com peers do tipo Channel (TeleProto: dialog.isChannel), por
 // isso usa channel_id/channel_title.
 type ChannelListEntry = {
   channel_id: string;
@@ -160,7 +160,7 @@ function buildChannelVideoItem(message: Api.Message, video: VideoDocument): Chan
   };
 }
 
-// GramJS só resolve um chatId numérico bruto pra getMessages/getEntity se o
+// TeleProto só resolve um chatId numérico bruto pra getMessages/getEntity se o
 // access_hash correspondente já estiver no cache interno de entidades — e esse
 // cache só é populado como efeito colateral de getDialogs(). Sem isso, a
 // primeira chamada a uma rota de canal/chat específico falha com
@@ -397,7 +397,7 @@ async function uploadVideo(chatId: string, params: UploadVideoParams): Promise<V
   // (getAttributes usa um `_getMetadata` que é só um stub) — sem isso, todo
   // vídeo enviado fica com duration 0. Passar nosso próprio
   // DocumentAttributeVideo aqui sobrescreve o (quebrado) auto-detect do
-  // GramJS; se o ffprobe falhar/não estiver disponível, o upload segue sem
+  // TeleProto; se o ffprobe falhar/não estiver disponível, o upload segue sem
   // esse atributo em vez de falhar.
   const probed = await probeVideoMetadata(params.buffer);
   if (probed) {
@@ -415,7 +415,7 @@ async function uploadVideo(chatId: string, params: UploadVideoParams): Promise<V
     file: uploadedFile,
     // sendFile's runtime só reconhece Buffer cru (ou path/File) pra `thumb` —
     // ao contrário do parâmetro `file`, que aceita CustomFile diretamente, o
-    // branch de thumb em _fileToMedia (telegram@2.26.22) não checa
+    // branch de thumb em _fileToMedia (teleproto@1.228.4) não checa
     // `instanceof CustomFile`, só `Buffer.isBuffer`, e falha com "Could not
     // create file from [object Object]" se receber um CustomFile aqui.
     thumb: params.thumbnailBuffer,

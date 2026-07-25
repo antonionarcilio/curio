@@ -54,7 +54,7 @@ memória e só então pagina. Em
 
 ## `GET /api/v1/videos/by/:chatId`
 
-- **Propósito**: lista vídeos de qualquer peer Telegram aceito por GramJS:
+- **Propósito**: lista vídeos de qualquer peer Telegram aceito por TeleProto:
   canal, grupo, conversa, username ou `"me"` para Saved Messages.
 - **Acesso**: Privada.
 - **Query params**: `limit`, `file_name`, `description`, `thumbnail` (`true` |
@@ -71,7 +71,8 @@ memória e só então pagina. Em
 ## `GET /api/v1/video/stream/:chatId/:messageId`
 
 - **Propósito**: serve os bytes do vídeo com suporte a `Range` (`200` ou
-  `206`), buscando sob demanda via `client.iterDownload`, sem gravar em disco.
+  `206`), buscando sob demanda via TeleProto MediaScheduler, sem gravar em
+  disco.
 - **Acesso**: Híbrida.
 - **Query params via URL assinada**: `exp` e `sig`.
 - **Resposta**: stream binário com `Content-Disposition: inline` para mime
@@ -152,7 +153,7 @@ memória e só então pagina. Em
 
 ## Nota sobre edição de arquivo existente
 
-`client.editMessage` do GramJS só troca texto/arquivo, mas não expõe de forma
+`client.editMessage` do TeleProto só troca texto/arquivo, mas não expõe de forma
 segura `attributes` para renomear nem `thumb` para trocar thumbnail de uma
 mensagem já existente. Thumbnail deve ser definido no upload; para mudá-lo
 depois, seria necessário reenviar o vídeo e perder o `message_id` original.

@@ -3,7 +3,6 @@ const mockClient = {
   getMessages: jest.fn(),
   getDialogs: jest.fn(),
   getEntity: jest.fn(),
-  iterDownload: jest.fn(),
   sendFile: jest.fn(),
   uploadFile: jest.fn(),
   editMessage: jest.fn(),
@@ -11,7 +10,7 @@ const mockClient = {
   downloadMedia: jest.fn(),
 };
 
-jest.mock('telegram', () => ({
+jest.mock('teleproto', () => ({
   TelegramClient: jest.fn(() => mockClient),
   Api: {
     InputMessagesFilterVideo: jest.fn(() => ({})),
@@ -20,11 +19,11 @@ jest.mock('telegram', () => ({
   },
 }));
 
-jest.mock('telegram/sessions', () => ({
+jest.mock('teleproto/sessions', () => ({
   StringSession: jest.fn(),
 }));
 
-jest.mock('telegram/client/uploads', () => ({
+jest.mock('teleproto/client/uploads', () => ({
   CustomFile: jest.fn().mockImplementation((name, size, path, buffer) => ({ name, size, path, buffer })),
 }));
 

@@ -5,17 +5,15 @@ import { readFixtureState } from './helpers/shared-state';
 import { TARGETS, TEST_FILE_NAME } from './helpers/video-fixture';
 
 beforeAll(() => ensureConnected());
-// destroy() (não disconnect()) marca client._destroyed = true — sem isso o
-// _updateLoop interno do GramJS continua acordando a cada 9s pra pingar um
-// sender já desconectado, gerando "[Error: TIMEOUT]"/"Cannot log after tests
-// are done" indefinidamente e travando o processo do Jest aberto no final.
+// destroy() é o shutdown completo do cliente TeleProto; disconnect() pode
+// deixar timers/conexões internas vivos e travar o processo do Jest no final.
 afterAll(() => client.destroy());
 
 describe.each(TARGETS)('GET /api/v1/videos/grouped (e2e) — $label', ({ chatId }) => {
   // `/videos/grouped` percorre getDialogs() e usa o chat_id resolvido de cada
   // diálogo — pra "me" (Saved Messages) isso é o ID numérico real da própria
   // conta, nunca a string "me" (só rotas que repassam o chatId direto pro
-  // GramJS, como upload/update/delete/stream, reconhecem esse atalho).
+  // TeleProto, como upload/update/delete/stream, reconhecem esse atalho).
   // Descobrir o chat_id real via file_name (único do fixture) evita assumir
   // que `chat_id === chatId` vale pro alvo "me".
   let realChatId: string;

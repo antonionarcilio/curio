@@ -4,6 +4,7 @@ import { CustomFile } from 'telegram/client/uploads';
 import { StringSession } from 'telegram/sessions';
 import { clearAllCaches, withCache } from './cache/ttl-cache';
 import config from './config';
+import { probeVideoMetadata } from './services/videos/probe';
 
 const client = new TelegramClient(new StringSession(config.session), config.apiId, config.apiHash, {
   connectionRetries: 5,
@@ -59,6 +60,7 @@ type VideoListEntry = {
   size: number;
   mime_type: string;
   date: number;
+  description: string | null;
 };
 
 // /channels só lida com peers do tipo Channel (GramJS: dialog.isChannel), por
@@ -322,6 +324,7 @@ async function fetchDialogVideos(tg: TelegramClient, dialog: Dialog, perChatLimi
       size: video.size,
       mime_type: video.mimeType,
       date: message.date,
+      description: message.message || null,
     });
   }
 
@@ -351,29 +354,67 @@ const listAllVideos = withCache(
 type UploadVideoParams = {
   buffer: Buffer;
   originalFileName: string;
-  fileName?: string;
   description?: string;
   thumbnailBuffer?: Buffer;
 };
 
+// Mesmo teto que o próprio Telegram aplica a contas normais. sendFile's
+// uploadFile interno só troca pra ler de disco (`file.path`) acima de
+// ~20MB — como o upload inteiro já vive em memória (multer memoryStorage,
+// sem path real), qualquer vídeo nessa faixa quebraria com "Either one of
+// `buffer` or `filePath` should be specified" se não forçássemos o buffer
+// path explicitamente via `maxBufferSize` abaixo.
+const MAX_UPLOAD_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
+
 // editMessage do Telegram só troca os bytes do arquivo (file/forceDocument),
-// nunca nome/thumbnail (attributes/thumb) — por isso nome e thumbnail
-// customizados só são possíveis no upload, via sendFile, nunca numa edição
-// de mensagem existente (ver CLAUDE.md/docs/ROUTES.md para o motivo).
+// nunca nome/thumbnail (attributes/thumb) — por isso thumbnail customizado só
+// é possível no upload, via sendFile, nunca numa edição de mensagem existente
+// (ver CLAUDE.md/docs/ROUTES.md para o motivo).
 async function uploadVideo(chatId: string, params: UploadVideoParams): Promise<VideoListItem> {
   const tg = await ensureConnected();
   await resolveEntity(chatId);
-  const finalFileName = params.fileName || params.originalFileName;
-  const file = new CustomFile(finalFileName, params.buffer.length, '', params.buffer);
-  const thumb = params.thumbnailBuffer
-    ? new CustomFile('thumb.jpg', params.thumbnailBuffer.length, '', params.thumbnailBuffer)
-    : undefined;
+  const file = new CustomFile(params.originalFileName, params.buffer.length, '', params.buffer);
+
+  // Faz o upload dos bytes nós mesmos (em vez de deixar o sendFile decidir)
+  // pra poder passar um `maxBufferSize` generoso — sem isso, qualquer arquivo
+  // acima de ~20MB cairia no branch de leitura por `file.path`, que é sempre
+  // vazio aqui (tudo em memória). O handle resultante (Api.InputFile ou
+  // InputFileBig) é reconhecido diretamente por sendFile, que pula a etapa de
+  // upload e só monta a mensagem.
+  const uploadedFile = await tg.uploadFile({ file, workers: 1, maxBufferSize: MAX_UPLOAD_SIZE_BYTES });
+
+  const attributes: Api.TypeDocumentAttribute[] = [
+    new Api.DocumentAttributeFilename({ fileName: params.originalFileName }),
+  ];
+
+  // A versão instalada de `telegram` nunca detecta duration/width/height reais
+  // (getAttributes usa um `_getMetadata` que é só um stub) — sem isso, todo
+  // vídeo enviado fica com duration 0. Passar nosso próprio
+  // DocumentAttributeVideo aqui sobrescreve o (quebrado) auto-detect do
+  // GramJS; se o ffprobe falhar/não estiver disponível, o upload segue sem
+  // esse atributo em vez de falhar.
+  const probed = await probeVideoMetadata(params.buffer);
+  if (probed) {
+    attributes.push(
+      new Api.DocumentAttributeVideo({
+        duration: probed.duration,
+        w: probed.width,
+        h: probed.height,
+        supportsStreaming: true,
+      }),
+    );
+  }
 
   const message = await tg.sendFile(chatId, {
-    file,
-    thumb,
+    file: uploadedFile,
+    // sendFile's runtime só reconhece Buffer cru (ou path/File) pra `thumb` —
+    // ao contrário do parâmetro `file`, que aceita CustomFile diretamente, o
+    // branch de thumb em _fileToMedia (telegram@2.26.22) não checa
+    // `instanceof CustomFile`, só `Buffer.isBuffer`, e falha com "Could not
+    // create file from [object Object]" se receber um CustomFile aqui.
+    thumb: params.thumbnailBuffer,
     caption: params.description,
-    attributes: [new Api.DocumentAttributeFilename({ fileName: finalFileName })],
+    attributes,
     forceDocument: false,
     supportsStreaming: true,
   });
@@ -419,6 +460,7 @@ export {
   listAllVideos,
   listChannels,
   listVideos,
+  MAX_UPLOAD_SIZE_BYTES,
   uploadVideo,
 };
 export type { ChannelVideoItem, VideoFetchParams, VideoListEntry, VideoListItem, VideoThumbnail };

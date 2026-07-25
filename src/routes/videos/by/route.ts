@@ -1,4 +1,4 @@
-import { filterByFileName } from '@/services/videos/filters';
+import { filterByVideoText } from '@/services/videos/filters';
 import { resolveThumbnails, thumbnailQuerySchema } from '@/services/videos/thumbnails';
 import { createSignedUrl } from '@/signed-url';
 import type { ChannelVideoItem } from '@/telegram-client';
@@ -19,6 +19,7 @@ const chatVideosQuerySchema = z
   .object({
     limit: z.coerce.number().int().positive().optional().default(100),
     file_name: z.string().trim().min(1).optional(),
+    description: z.string().trim().min(1).optional(),
     thumbnail: thumbnailQuerySchema,
   })
   .merge(paginationQuerySchema);
@@ -34,9 +35,10 @@ router.get('/videos/by/:chatId', async (req: Request, res: Response) => {
 
   try {
     const base = `${req.protocol}://${req.get('host')}`;
-    const body = parsedQuery.data.file_name
-      ? await buildFilteredResponse(req.params.chatId, parsedQuery.data, base)
-      : await buildNativePageResponse(req.params.chatId, parsedQuery.data, base);
+    const body =
+      parsedQuery.data.file_name || parsedQuery.data.description
+        ? await buildFilteredResponse(req.params.chatId, parsedQuery.data, base)
+        : await buildNativePageResponse(req.params.chatId, parsedQuery.data, base);
 
     res.json(body);
   } catch (err) {
@@ -45,9 +47,9 @@ router.get('/videos/by/:chatId', async (req: Request, res: Response) => {
 });
 
 async function buildFilteredResponse(chatId: string, query: ChatVideosQuery, base: string) {
-  const { limit, file_name, thumbnail, ...paginationQuery } = query;
+  const { limit, file_name, description, thumbnail, ...paginationQuery } = query;
   const { items } = await listVideos(chatId, { limit, offset: 0 });
-  const filtered = filterByFileName(items, file_name);
+  const filtered = filterByVideoText(items, { fileName: file_name, description });
 
   if (!isPaginationRequested(paginationQuery)) {
     return { chat_id: chatId, data: await decorate(filtered, chatId, thumbnail, base) };

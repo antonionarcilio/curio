@@ -14,4 +14,12 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
     },
   },
+  {
+    // Jest só carrega testSequencer via require() (CommonJS) — não dá pra
+    // usar import ESM aqui, já que o projeto inteiro é "type": "commonjs".
+    files: ['test/e2e/sequencer.js'],
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
 );

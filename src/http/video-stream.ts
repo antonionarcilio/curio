@@ -38,16 +38,30 @@ export async function streamTelegramVideo(
       res.set('Content-Range', `bytes ${start}-${end}/${size}`);
     }
 
+    // `limit` do iterDownload é a quantidade de chunks de `requestSize` bytes a
+    // buscar, não uma contagem de bytes — passar `contentLength` (bytes) direto
+    // fazia o download continuar muito além da janela pedida, escrevendo mais
+    // bytes na resposta do que o `Content-Length` declarado (só não quebrava a
+    // requisição completa, sem Range, porque `contentLength` ali já é o
+    // tamanho real do arquivo). O corte explícito abaixo garante que nunca
+    // escrevemos além do que foi declarado, mesmo se o último chunk do
+    // Telegram ultrapassar a janela.
+    const chunkCount = Math.ceil(contentLength / CHUNK_SIZE);
     const iterator = client.iterDownload({
       file: message.media,
       offset: bigInt(start),
-      limit: contentLength,
+      limit: chunkCount,
       requestSize: CHUNK_SIZE,
     });
 
+    let bytesWritten = 0;
     for await (const chunk of iterator) {
-      if (aborted) break;
-      const canContinue = res.write(chunk);
+      if (aborted || bytesWritten >= contentLength) break;
+      const remaining = contentLength - bytesWritten;
+      const toWrite = chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
+      bytesWritten += toWrite.length;
+
+      const canContinue = res.write(toWrite);
       if (!canContinue) {
         await new Promise((resolve) => res.once('drain', resolve));
       }

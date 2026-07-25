@@ -13,6 +13,7 @@ const videoQuerySchema = z
     chat_id: z.string().trim().min(1).optional(),
     chat_title: z.string().trim().min(1).optional(),
     file_name: z.string().trim().min(1).optional(),
+    description: z.string().trim().min(1).optional(),
   })
   .merge(paginationQuerySchema);
 
@@ -24,11 +25,16 @@ router.get('/videos/grouped', async (req: Request, res: Response) => {
   }
 
   try {
-    const { limit, chat_id, chat_title, file_name, ...paginationQuery } = parsedQuery.data;
+    const { limit, chat_id, chat_title, file_name, description, ...paginationQuery } = parsedQuery.data;
     const base = `${req.protocol}://${req.get('host')}`;
 
     const videos = await listAllVideos({ perChatLimit: limit });
-    const filtered = filterVideos(videos, { chatId: chat_id, chatTitle: chat_title, fileName: file_name });
+    const filtered = filterVideos(videos, {
+      chatId: chat_id,
+      chatTitle: chat_title,
+      fileName: file_name,
+      description,
+    });
 
     const withUrls = (items: typeof filtered) =>
       items.map((video) => ({ ...video, url: createSignedUrl(base, video.chat_id, video.message_id) }));

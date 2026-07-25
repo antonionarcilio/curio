@@ -5,6 +5,12 @@ export type VideoFilterQuery = {
   chatId?: string;
   chatTitle?: string;
   fileName?: string;
+  description?: string;
+};
+
+type VideoTextFilterQuery = {
+  fileName?: string;
+  description?: string;
 };
 
 // IDs de canal/supergrupo no Telegram são negativos (ex: -1001234567890);
@@ -19,6 +25,7 @@ function matchesVideoFilters(video: VideoListEntry, filters: VideoFilterQuery): 
   if (filters.chatId && extractDigits(video.chat_id) !== extractDigits(filters.chatId)) return false;
   if (filters.chatTitle && !includesSearchTerm(video.chat_title, filters.chatTitle)) return false;
   if (filters.fileName && !includesSearchTerm(video.file_name, filters.fileName)) return false;
+  if (filters.description && !includesSearchTerm(video.description ?? '', filters.description)) return false;
   return true;
 }
 
@@ -29,6 +36,17 @@ export function filterVideos(videos: VideoListEntry[], filters: VideoFilterQuery
 // Reutilizável em qualquer listagem de vídeo de um chat só (sem chat_id/chat_title
 // no item).
 export function filterByFileName<T extends { file_name: string }>(items: T[], fileName?: string): T[] {
-  if (!fileName) return items;
-  return items.filter((item) => includesSearchTerm(item.file_name, fileName));
+  return filterByVideoText(items, { fileName });
+}
+
+export function filterByVideoText<T extends { file_name: string; description?: string | null }>(
+  items: T[],
+  filters: VideoTextFilterQuery,
+): T[] {
+  if (!filters.fileName && !filters.description) return items;
+  return items.filter((item) => {
+    if (filters.fileName && !includesSearchTerm(item.file_name, filters.fileName)) return false;
+    if (filters.description && !includesSearchTerm(item.description ?? '', filters.description)) return false;
+    return true;
+  });
 }

@@ -14,7 +14,7 @@ describe('signed-url', () => {
   describe('createSignedUrl', () => {
     it('produces a url of the expected shape with exp ~ now + 1h', () => {
       const url = createSignedUrl('http://localhost:8787', 'chat1', 42);
-      const match = /^http:\/\/localhost:8787\/video\/chat1\/42\?exp=(\d+)&sig=([0-9a-f]+)$/.exec(url);
+      const match = /^http:\/\/localhost:8787\/api\/v1\/video\/stream\/chat1\/42\?exp=(\d+)&sig=([0-9a-f]+)$/.exec(url);
       expect(match).not.toBeNull();
       const exp = Number(match![1]);
       expect(exp).toBe(NOW + 3600);

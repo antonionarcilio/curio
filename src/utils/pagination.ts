@@ -20,7 +20,7 @@ export type ResolvedPagination = { page: number; per_page: number };
 // têm `limit`, o chamador passa esse `limit` aqui, pra ele continuar valendo
 // mesmo em modo paginado; rotas sem `limit` (ex: /channels) usam o default.
 // Sempre capado em MAX_PER_PAGE, mesmo quando `defaultPerPage` vem de um
-// `limit` sem teto próprio (ex: /videos, onde `limit` também é o cap de
+// `limit` sem teto próprio (ex: /api/v1/videos/grouped, onde `limit` também é o cap de
 // busca por chat, não só o tamanho de página).
 export function resolvePagination({ page, per_page }: PaginationQuery, defaultPerPage = 20): ResolvedPagination {
   return { page: page ?? 1, per_page: per_page ?? Math.min(defaultPerPage, MAX_PER_PAGE) };
@@ -39,7 +39,7 @@ function totalPages(total: number, perPage: number): number {
 }
 
 // Corte em memória, usado pelas rotas que não têm paginação nativa
-// disponível (/videos agregada e /channels).
+// disponível (/api/v1/videos/grouped e /api/v1/channels).
 export function paginate<T>(items: T[], { page, per_page }: ResolvedPagination): Paginated<T> {
   const total = items.length;
   const start = (page - 1) * per_page;

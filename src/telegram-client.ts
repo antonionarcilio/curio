@@ -47,10 +47,8 @@ type ThumbnailInfo = {
   thumbnail: string | null;
 };
 
-// Item mais rico, servido por /channels/:channelId/videos: tudo aqui sai do
-// mesmo Api.Document que já vem na mensagem, sem chamada extra ao Telegram.
-// /list/:chatId e /videos ficam de fora e mantêm o shape enxuto de VideoListItem
-// (a projeção acontece em src/routes/video-fields.ts).
+// Item rico usado pela listagem de vídeos por peer: tudo aqui sai do mesmo
+// Api.Document que já vem na mensagem, sem chamada extra ao Telegram.
 type ChannelVideoItem = VideoListItem & VideoAttributes & ThumbnailInfo & { description: string | null };
 
 type VideoListEntry = {
@@ -63,10 +61,8 @@ type VideoListEntry = {
   date: number;
 };
 
-// /channels e /channels/:chatId/videos só lidam com peers do tipo Channel
-// (GramJS: dialog.isChannel) — por isso usam channel_id/channel_title, e não
-// chat_id/chat_title (esse último é reservado pra rotas que podem apontar
-// pra qualquer tipo de diálogo: grupo comum, chat privado, "me").
+// /channels só lida com peers do tipo Channel (GramJS: dialog.isChannel), por
+// isso usa channel_id/channel_title.
 type ChannelListEntry = {
   channel_id: string;
   channel_title: string;
@@ -166,7 +162,8 @@ function buildChannelVideoItem(message: Api.Message, video: VideoDocument): Chan
 // access_hash correspondente já estiver no cache interno de entidades — e esse
 // cache só é populado como efeito colateral de getDialogs(). Sem isso, a
 // primeira chamada a uma rota de canal/chat específico falha com
-// "Could not find the input entity" até que /videos ou /channels rodem uma vez
+// "Could not find the input entity" até que uma rota como /api/v1/videos/grouped
+// ou /api/v1/channels rode uma vez
 // (eles chamam getDialogs). Esta função replica esse aquecimento sob demanda.
 async function resolveEntityUncached(chatId: string): Promise<unknown> {
   const tg = await ensureConnected();

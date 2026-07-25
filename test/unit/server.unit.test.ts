@@ -43,25 +43,41 @@ describe('verifySignedStream', () => {
   it('rejects paths outside the streaming route even with a valid signature', () => {
     const url = createSignedUrl('http://x', 'chat1', 1);
     const { searchParams } = new URL(url);
-    const fakeReq = req('/videos', { exp: searchParams.get('exp')!, sig: searchParams.get('sig')! });
+    const fakeReq = req('/api/v1/videos/grouped', { exp: searchParams.get('exp')!, sig: searchParams.get('sig')! });
     expect(verifySignedStream(fakeReq)).toBe(false);
   });
 
   it('rejects a valid-looking signature scoped to a different chatId/messageId', () => {
     const url = createSignedUrl('http://x', 'chat1', 1);
     const { searchParams } = new URL(url);
-    const fakeReq = req('/video/chat2/1', { exp: searchParams.get('exp')!, sig: searchParams.get('sig')! });
+    const fakeReq = req('/api/v1/video/stream/chat2/1', {
+      exp: searchParams.get('exp')!,
+      sig: searchParams.get('sig')!,
+    });
     expect(verifySignedStream(fakeReq)).toBe(false);
   });
 
   it('accepts a valid signature scoped to the matching chatId/messageId', () => {
     const url = createSignedUrl('http://x', 'chat1', 1);
     const { searchParams } = new URL(url);
-    const fakeReq = req('/video/chat1/1', { exp: searchParams.get('exp')!, sig: searchParams.get('sig')! });
+    const fakeReq = req('/api/v1/video/stream/chat1/1', {
+      exp: searchParams.get('exp')!,
+      sig: searchParams.get('sig')!,
+    });
+    expect(verifySignedStream(fakeReq)).toBe(true);
+  });
+
+  it('accepts a valid signature on the download route', () => {
+    const url = createSignedUrl('http://x', 'chat1', 1);
+    const { searchParams } = new URL(url);
+    const fakeReq = req('/api/v1/video/dl/chat1/1', {
+      exp: searchParams.get('exp')!,
+      sig: searchParams.get('sig')!,
+    });
     expect(verifySignedStream(fakeReq)).toBe(true);
   });
 
   it('rejects when exp or sig query params are missing', () => {
-    expect(verifySignedStream(req('/video/chat1/1', {}))).toBe(false);
+    expect(verifySignedStream(req('/api/v1/video/stream/chat1/1', {}))).toBe(false);
   });
 });

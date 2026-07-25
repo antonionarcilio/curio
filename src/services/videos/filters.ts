@@ -10,7 +10,7 @@ export type VideoFilterQuery = {
 // IDs de canal/supergrupo no Telegram são negativos (ex: -1001234567890);
 // comparamos só os dígitos para que o "-" seja irrelevante na busca. Exportada
 // porque também é reaproveitada fora de contexto de vídeo (ex: filtro de
-// channel_id em list-channels.route.ts).
+// channel_id em src/routes/channels/route.ts).
 export function extractDigits(chatId: string): string {
   return chatId.replace(/\D/g, '');
 }
@@ -27,7 +27,7 @@ export function filterVideos(videos: VideoListEntry[], filters: VideoFilterQuery
 }
 
 // Reutilizável em qualquer listagem de vídeo de um chat só (sem chat_id/chat_title
-// no item, ex: VideoListItem de /channels/:channelId/videos e /list/:chatId).
+// no item).
 export function filterByFileName<T extends { file_name: string }>(items: T[], fileName?: string): T[] {
   if (!fileName) return items;
   return items.filter((item) => includesSearchTerm(item.file_name, fileName));

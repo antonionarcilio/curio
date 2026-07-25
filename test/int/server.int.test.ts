@@ -7,7 +7,6 @@ jest.mock('@/telegram-client', () => ({
   getVideoMessage: jest.fn().mockRejectedValue(new Error('not used in these tests')),
   listAllVideos: jest.fn().mockResolvedValue([]),
   listChannels: jest.fn().mockResolvedValue([]),
-  getChannelVideos: jest.fn().mockResolvedValue({ channel_id: 'x', channel_title: 'x', items: [], total: 0 }),
   listVideos: jest.fn().mockResolvedValue({ items: [], total: 0 }),
   editVideoCaption: jest.fn().mockResolvedValue(undefined),
 }));
@@ -22,17 +21,17 @@ describe('requireToken (HTTP integration via buildApp)', () => {
   });
 
   it('returns 401 without an Authorization header in strict mode', async () => {
-    const res = await request(buildApp()).get('/videos');
+    const res = await request(buildApp()).get('/api/v1/videos/grouped');
     expect(res.status).toBe(401);
   });
 
   it('passes through with the correct Bearer token', async () => {
-    const res = await request(buildApp()).get('/videos').set('Authorization', `Bearer ${ACCESS_TOKEN}`);
+    const res = await request(buildApp()).get('/api/v1/videos/grouped').set('Authorization', `Bearer ${ACCESS_TOKEN}`);
     expect(res.status).toBe(200);
   });
 
   it('returns 401 with an incorrect Bearer token', async () => {
-    const res = await request(buildApp()).get('/videos').set('Authorization', 'Bearer wrong-token');
+    const res = await request(buildApp()).get('/api/v1/videos/grouped').set('Authorization', 'Bearer wrong-token');
     expect(res.status).toBe(401);
   });
 
@@ -53,7 +52,7 @@ describe('requireToken (HTTP integration via buildApp)', () => {
     const url = createSignedUrl('http://x', 'chat1', 1);
     const { searchParams } = new URL(url);
     const res = await request(buildApp())
-      .get('/videos')
+      .get('/api/v1/videos/grouped')
       .query({
         exp: searchParams.get('exp')!,
         sig: searchParams.get('sig')!,
@@ -79,9 +78,9 @@ describe('JSON body parsing (HTTP integration via buildApp)', () => {
     process.env.NODE_ENV = 'test';
   });
 
-  it('parses a JSON body on PATCH /video/:chatId/:messageId instead of treating it as undefined', async () => {
+  it('parses a JSON body on PATCH /api/v1/video/update/:chatId/:messageId instead of treating it as undefined', async () => {
     const res = await request(buildApp())
-      .patch('/video/chat1/10')
+      .patch('/api/v1/video/update/chat1/10')
       .set('Authorization', `Bearer ${ACCESS_TOKEN}`)
       .send({ description: 'nova descrição' });
 
@@ -103,7 +102,7 @@ describe('requireToken dev auto-fill (fail-closed by design)', () => {
     process.env.NODE_ENV = 'development';
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- must re-require after jest.resetModules() to pick up the new NODE_ENV
     const devServer = require('@/server') as typeof import('@/server');
-    const res = await request(devServer.buildApp()).get('/videos');
+    const res = await request(devServer.buildApp()).get('/api/v1/videos/grouped');
     expect(res.status).toBe(200);
   });
 
@@ -112,7 +111,7 @@ describe('requireToken dev auto-fill (fail-closed by design)', () => {
     process.env.NODE_ENV = value;
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- must re-require after jest.resetModules() to pick up the new NODE_ENV
     const strictServer = require('@/server') as typeof import('@/server');
-    const res = await request(strictServer.buildApp()).get('/videos');
+    const res = await request(strictServer.buildApp()).get('/api/v1/videos/grouped');
     expect(res.status).toBe(401);
   });
 });

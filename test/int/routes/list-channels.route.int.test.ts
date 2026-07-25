@@ -6,7 +6,7 @@ jest.mock('@/telegram-client', () => ({
   listChannels: mockListChannels,
 }));
 
-import listChannelsRouter from '@/routes/list-channels.route';
+import listChannelsRouter from '@/routes/channels/route';
 import { mountRouter } from '@test/helpers/mount-router';
 
 const buildApp = () => mountRouter(listChannelsRouter);

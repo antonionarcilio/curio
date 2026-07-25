@@ -1,4 +1,4 @@
-import { extractDigits, filterByFileName, filterVideos } from '@/routes/video-filters';
+import { extractDigits, filterByFileName, filterVideos } from '@/services/videos/filters';
 import type { VideoListEntry } from '@/telegram-client';
 
 function makeVideo(overrides: Partial<VideoListEntry> = {}): VideoListEntry {

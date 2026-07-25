@@ -1,11 +1,15 @@
 import { client, getVideoMessage } from '@/telegram-client';
 import bigInt from 'big-integer';
-import express, { type Request, type Response } from 'express';
-import { buildContentDisposition, CHUNK_SIZE, parseRange, SAFE_MIME_TYPE } from './http-utils';
+import type { Request, Response } from 'express';
+import { buildContentDisposition, CHUNK_SIZE, parseRange, SAFE_MIME_TYPE } from './video-response';
 
-const router = express.Router();
+type StreamDisposition = 'inline' | 'attachment';
 
-router.get('/video/:chatId/:messageId', async (req: Request, res: Response) => {
+export async function streamTelegramVideo(
+  req: Request,
+  res: Response,
+  { disposition }: { disposition: StreamDisposition },
+): Promise<void> {
   let aborted = false;
   req.on('close', () => {
     aborted = true;
@@ -20,14 +24,15 @@ router.get('/video/:chatId/:messageId', async (req: Request, res: Response) => {
     const contentLength = end - start + 1;
 
     const safeMimeType = SAFE_MIME_TYPE.test(mimeType) ? mimeType : 'application/octet-stream';
-    const disposition = safeMimeType === 'application/octet-stream' ? 'attachment' : 'inline';
+    const contentDisposition =
+      disposition === 'attachment' || safeMimeType === 'application/octet-stream' ? 'attachment' : 'inline';
 
     res.status(range ? 206 : 200);
     res.set({
       'Content-Type': safeMimeType,
       'Accept-Ranges': 'bytes',
       'Content-Length': String(contentLength),
-      'Content-Disposition': buildContentDisposition(disposition, fileName),
+      'Content-Disposition': buildContentDisposition(contentDisposition, fileName),
     });
     if (range) {
       res.set('Content-Range', `bytes ${start}-${end}/${size}`);
@@ -56,6 +61,4 @@ router.get('/video/:chatId/:messageId', async (req: Request, res: Response) => {
       res.end();
     }
   }
-});
-
-export = router;
+}

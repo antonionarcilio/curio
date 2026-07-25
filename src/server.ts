@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import config from './config';
-import router from './routes';
+import router from './router';
 import { verifySignedUrl } from './signed-url';
 import { ensureConnected } from './telegram-client';
 
@@ -22,13 +22,13 @@ function extractBearerToken(req: Request): string {
 // que não enviam headers customizados numa navegação simples. Em vez de
 // aceitar o token mestre na query string (o que o exporia em qualquer lugar
 // que a URL vaze — histórico, logs, etc.), ela aceita uma URL assinada e com
-// expiração (?exp=&sig=), escopada só àquele chatId/messageId. As demais
-// rotas (descoberta: /routes, /videos, /channels, /list/...) exigem o header
-// com o token mestre.
-const STREAMING_PATH = /^\/video\/([^/]+)\/([^/]+)$/;
+// expiração (?exp=&sig=), escopada só àquele chatId/messageId. A rota de
+// download aceita o mesmo par assinado porque também precisa funcionar como
+// URL direta. As demais rotas exigem o header com o token mestre.
+const SIGNED_VIDEO_PATH = /^\/api\/v1\/video\/(?:stream|dl)\/([^/]+)\/([^/]+)$/;
 
 function verifySignedStream(req: Request): boolean {
-  const match = STREAMING_PATH.exec(req.path);
+  const match = SIGNED_VIDEO_PATH.exec(req.path);
   if (!match) return false;
 
   const [, chatId, messageId] = match;
@@ -65,7 +65,7 @@ function buildApp() {
   const app = express();
   app.use(express.json());
   app.use(requireToken);
-  app.use(router);
+  app.use('/api/v1', router);
   return app;
 }
 
@@ -80,7 +80,7 @@ async function startServer() {
       console.log('Modo dev: Authorization é preenchido automaticamente se omitido.');
     }
     console.log(
-      `Exemplo: curl -H "Authorization: Bearer <ACCESS_TOKEN>" http://localhost:${config.port}/video/<chatId>/<messageId>`,
+      `Exemplo: curl -H "Authorization: Bearer <ACCESS_TOKEN>" http://localhost:${config.port}/api/v1/video/stream/<chatId>/<messageId>`,
     );
   });
 }

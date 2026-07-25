@@ -1,9 +1,9 @@
+import { filterVideos } from '@/services/videos/filters';
 import { createSignedUrl } from '@/signed-url';
 import { listAllVideos } from '@/telegram-client';
+import { isPaginationRequested, paginate, paginationQuerySchema, resolvePagination } from '@/utils/pagination';
 import express, { type Request, type Response } from 'express';
 import { z } from 'zod';
-import { isPaginationRequested, paginate, paginationQuerySchema, resolvePagination } from './pagination';
-import { filterVideos } from './video-filters';
 
 const router = express.Router();
 
@@ -16,7 +16,7 @@ const videoQuerySchema = z
   })
   .merge(paginationQuerySchema);
 
-router.get('/videos', async (req: Request, res: Response) => {
+router.get('/videos/grouped', async (req: Request, res: Response) => {
   const parsedQuery = videoQuerySchema.safeParse(req.query);
   if (!parsedQuery.success) {
     res.status(400).json({ error: parsedQuery.error.message });

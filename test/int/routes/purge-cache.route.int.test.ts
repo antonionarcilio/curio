@@ -5,7 +5,7 @@ jest.mock('@/cache/ttl-cache', () => ({
 }));
 
 import { clearAllCaches } from '@/cache/ttl-cache';
-import purgeCacheRouter from '@/routes/purge-cache.route';
+import purgeCacheRouter from '@/routes/cache/purge/route';
 import { mountRouter } from '@test/helpers/mount-router';
 
 describe('POST /cache/purge', () => {

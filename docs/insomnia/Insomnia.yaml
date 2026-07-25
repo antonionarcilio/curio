@@ -6,84 +6,51 @@ meta:
   created: 1784930713129
   modified: 1784933376599
   description: |-
-    API HTTP que transmite vídeos guardados no Telegram (canais privados ou "Saved Messages") via MTProto/GramJS, com suporte a Range requests.
+    API HTTP versionada em `/api/v1` que transmite vídeos guardados no Telegram via MTProto/GramJS, com suporte a Range requests.
 
-    **Antes de usar**: no environment `Base Environment`, configure `BASE_URL` (default `http://localhost:8787`) e o header `Authorization: Bearer <ACCESS_TOKEN>` (ou variável de environment equivalente) — todas as rotas exigem esse token, exceto a rota de streaming quando acessada via URL assinada (`?exp=&sig=`).
+    Configure `BASE_URL` (default `http://localhost:8787`) e envie `Authorization: Bearer <ACCESS_TOKEN>` em todas as rotas, exceto `video/stream` e `video/dl` quando acessadas com URL assinada (`?exp=&sig=`).
 
-    **Cache**: `/videos`, `/channels`, `/channels/:channelId/videos`, `/list/:chatId` e a resolução de metadados de `/video/:chatId/:messageId` usam cache em memória com TTL (`CACHE_TTL_MS`, default 3 min). Use `POST /cache/purge` pra forçar dados frescos.
+    Cache: `/api/v1/videos/grouped`, `/api/v1/videos/by/:chatId`, `/api/v1/channels` e a resolução de metadados de stream/download usam cache em memória com TTL. Use `POST /api/v1/cache/purge` para forçar dados frescos.
 
-    Documentação completa e detalhada de cada rota: `docs/ROUTES.md` no repositório.
+    Documentação completa: `docs/ROUTES.md`.
 collection:
-  - url: '{{ _.BASE_URL }}/routes'
-    name: routes
-    meta:
-      id: req_39f181eba45146418b03badfd77f9ee7
-      created: 1784930713364
-      modified: 1784930970420
-      isPrivate: false
-      description: |-
-        **Propósito**: lista todas as rotas registradas no servidor (introspecção de `router.stack` em tempo de execução — nunca fica desatualizada conforme rotas são adicionadas/removidas).
-
-        **Acesso**: Privada.
-
-        **Query params**: nenhum.
-
-        **Resposta**: `[{ "method": "GET", "path": "/videos" }, ...]`
-      sortKey: -1784930713364
-    method: GET
-    settings:
-      renderRequestBody: true
-      encodeUrl: true
-      followRedirects: global
-      cookies:
-        send: true
-        store: true
-      rebuildPath: true
-  - url: '{{ _.BASE_URL }}/channels'
+  - url: '{{ _.BASE_URL }}/api/v1/channels'
     name: channels
     meta:
-      id: req_662d7a0f0cac4f608d87c7afb24e7736
+      id: req_channels_v1
       created: 1784930998784
       modified: 1784932822596
       isPrivate: false
       description: |-
-        **Propósito**: lista os canais/supergrupos de que você faz parte.
+        Lista canais/supergrupos.
 
-        **Acesso**: Privada.
-
-        **Query params**:
-        - `limit` (default `100`) — limita diálogos escaneados no total (canais + grupos + conversas, não só canais); `limit=5` pode devolver menos de 5 canais se nem todos os 5 diálogos mais recentes forem canais.
-        - `channel_id` — filtra por ID exato do canal (compara só dígitos, `-100...` e `100...` casam igual).
-        - `channel_title` — filtra por título contendo o termo (case-insensitive, sem diferenciar acentos). Se ambos os filtros forem informados, é AND.
-        - `page` / `per_page` (`per_page` até `100`) — ativa modo paginado (envelope). Sem nenhum dos dois, resposta é array plano. Passando só `page`, `per_page` assume o valor de `limit`. Paginação em memória sobre a lista já buscada.
-
-        **Resposta**: sem paginação, `[{ "channel_id": "...", "channel_title": "..." }, ...]`. Com paginação, `{ data, page, per_page, total, total_pages }`.
-
-        **Nomenclatura**: usa `channel_id`/`channel_title` (não `chat_id`/`chat_title`) porque só lida com peers do tipo `Channel`.
+        Acesso: Privada.
+        Query params: `limit`, `channel_id`, `channel_title`, `page`, `per_page`.
+        Resposta: array de `{ channel_id, channel_title }` ou envelope paginado.
       sortKey: -1784931209194
     method: GET
     parameters:
       - name: limit
         value: '10'
-        description: 'máximo de diálogos escaneados no total (default 100). Não é só canais — conta todos os diálogos (canais + grupos + conversas).'
-        disabled: true
-      - name: per_page
-        value: '5'
-        description: 'itens por página (até 100). Ativa modo paginado (envelope com data, page, per_page, total, total_pages).'
-        disabled: true
-      - name: page
-        value: '2'
-        description: 'número da página (default 1). Só funciona se per_page ou page forem informados.'
+        description: máximo de diálogos escaneados no total
         disabled: true
       - name: channel_id
         value: '1002283515431'
-        description: 'filtra por ID exato do canal (compara só dígitos, -100... e 100... casam igual).'
+        description: filtra por ID exato, ignorando sinal
         disabled: true
       - name: channel_title
         value: dev
-        description: 'filtra por título contendo o termo (case-insensitive, sem diferenciar acentos).'
+        description: filtra por título, case/acento-insensitive
         disabled: true
-    settings:
+      - name: page
+        value: '1'
+        description: ativa paginação
+        disabled: true
+      - name: per_page
+        value: '10'
+        description: itens por página, até 100
+        disabled: true
+    settings: &settings
       renderRequestBody: true
       encodeUrl: true
       followRedirects: global
@@ -91,239 +58,145 @@ collection:
         send: true
         store: true
       rebuildPath: true
-  - url: '{{ _.BASE_URL }}/videos'
-    name: videos
+  - url: '{{ _.BASE_URL }}/api/v1/videos/grouped'
+    name: videos grouped
     meta:
-      id: req_928ee1ac5380470982b7b2811180626c
+      id: req_videos_grouped_v1
       created: 1784931131777
       modified: 1784931787762
       isPrivate: false
       description: |-
-        **Propósito**: percorre todos os seus chats/canais (`getDialogs`) e lista os vídeos encontrados em cada um, já com a URL de streaming pronta (assinada). Busca por chat é paralelizada (até `TELEGRAM_FETCH_CONCURRENCY` chats simultâneos, default 5).
+        Lista vídeos encontrados em todos os chats/canais, com URL de streaming assinada.
 
-        **Acesso**: Privada.
-
-        **Query params**:
-        - `limit` (default `100`) — máximo de vídeos por chat, passado direto pro filtro nativo do Telegram (`InputMessagesFilterVideo`). Não é um cap total da resposta: com `limit=1` e 26 chats com vídeo, a resposta traz até 26 itens (um por chat).
-        - `chat_id` — filtra por correspondência exata do ID do chat.
-        - `chat_title` — filtra por `chat_title` contendo o termo (case-insensitive, sem diferenciar acentos).
-        - `file_name` — filtra por `file_name` contendo o termo (mesmo tipo de match). Filtros combinam com AND quando mais de um é informado.
-        - `page` / `per_page` (`per_page` até `100`) — corte em memória sobre o array já agregado e filtrado (não existe paginação nativa "todos os vídeos de todos os chats" no Telegram). Passando só `page`, `per_page` assume o valor de `limit`.
-
-        **Resposta**: sem paginação, array de `{ chat_id, chat_title, message_id, file_name, size, mime_type, date, url }`. Com paginação, `{ data, page, per_page, total, total_pages }`.
+        Acesso: Privada.
+        Query params: `limit`, `chat_id`, `chat_title`, `file_name`, `page`, `per_page`.
+        Resposta: array de `{ chat_id, chat_title, message_id, file_name, size, mime_type, date, url }` ou envelope paginado.
       sortKey: -1784931131777
     method: GET
     parameters:
       - name: limit
         value: '10'
-        description: 'máximo de vídeos por chat (default 100). Passado direto pro filtro nativo do Telegram (InputMessagesFilterVideo).'
-        disabled: true
-      - name: per_page
-        value: '2'
-        description: 'itens por página (até 100). Ativa modo paginado (envelope com data, page, per_page, total, total_pages). Corte em memória, não nativo.'
-        disabled: true
-      - name: page
-        value: '5'
-        description: 'número da página (default 1). Só funciona se per_page ou page forem informados.'
-        disabled: true
-      - name: file_name
-        value: js
-        description: 'filtra por file_name contendo o termo (case-insensitive, sem diferenciar acentos).'
+        description: máximo de vídeos por chat
         disabled: true
       - name: chat_id
         value: ''
-        description: 'filtra por correspondência exata do ID do chat.'
+        description: filtra por ID exato do chat
         disabled: true
       - name: chat_title
-        value: course
-        description: 'filtra por chat_title contendo o termo (case-insensitive, sem diferenciar acentos).'
+        value: ''
+        description: filtra por título
         disabled: true
-    settings:
-      renderRequestBody: true
-      encodeUrl: true
-      followRedirects: global
-      cookies:
-        send: true
-        store: true
-      rebuildPath: true
-  - url: '{{ _.BASE_URL }}/channels/1004325653681/videos'
-    name: videos by channel
+      - name: file_name
+        value: ''
+        description: filtra por nome do arquivo
+        disabled: true
+      - name: page
+        value: '1'
+        description: ativa paginação em memória
+        disabled: true
+      - name: per_page
+        value: '10'
+        description: itens por página, até 100
+        disabled: true
+    settings: *settings
+  - url: '{{ _.BASE_URL }}/api/v1/videos/by/1004325653681'
+    name: videos by chat
     meta:
-      id: req_5cb1eba140344f5eb296a3542ea8cb5a
+      id: req_videos_by_v1
       created: 1784931286611
       modified: 1784931861463
       isPrivate: false
       description: |-
-        **Propósito**: lista os vídeos de um canal específico.
+        Lista vídeos de um chat/canal/username ou `me`.
 
-        **Acesso**: Privada.
-
-        **Query params**:
-        - `limit` (default `100`) — máximo de vídeos a buscar.
-        - `file_name` — filtra por `file_name` contendo o termo (case-insensitive, sem diferenciar acentos).
-        - `thumbnail` (default `false`) — `true` | `false`, ver "Thumbnail e metadados do vídeo" abaixo.
-        - `page` / `per_page` (`per_page` até `100`) — ativa modo paginado.
-
-        **Paginação nativa, exceto com `file_name`**: sem filtro de texto, cada página é buscada direto do Telegram via `offsetId`/`addOffset` (`total`/`total_pages` vêm da contagem real dele). Com `file_name`, a busca olha todo o conjunto (até `limit`) antes de filtrar e paginar em memória — senão a busca não encontraria vídeos fora da janela de uma única página nativa.
-
-        **Resposta**: sem paginação, `{ channel_id, channel_title, data: [{ message_id, file_name, size, mime_type, date, description, duration, width, height, supports_streaming, thumbnail_width, thumbnail_height, thumbnail, url }] }`. Com paginação, `{ channel_id, channel_title, data, page, per_page, total, total_pages }`.
-
-        **Thumbnail e metadados do vídeo**: esta é a única rota de listagem que devolve os campos extras acima — `/videos` e `/list/:chatId` mantêm o shape enxuto (`message_id, file_name, size, mime_type, date`). `duration` (segundos), `width`, `height` e `supports_streaming` vêm do `DocumentAttributeVideo`; `description` é a caption da mensagem; `thumbnail_width`/`thumbnail_height` são as dimensões da maior thumbnail que o Telegram tem pro vídeo (`null` se não houver nenhuma). Campos que o Telegram não informa voltam `null` (`supports_streaming` volta `false`). O campo `thumbnail` (data URI JPEG) só é preenchido com `?thumbnail=true` — por padrão vem `null`, sem download extra. Com `true`, cada item causa um download real (`downloadMedia` pela maior `PhotoSize`), paralelizado por `TELEGRAM_FETCH_CONCURRENCY` e cacheado por `CACHE_TTL_MS`; se o download de um item falhar, ele fica com `thumbnail: null` em vez de derrubar a resposta. Thumbnails são resolvidas só pros itens que entram na resposta, igual às URLs assinadas.
+        Acesso: Privada.
+        Query params: `limit`, `file_name`, `thumbnail`, `page`, `per_page`.
+        Resposta: `{ chat_id, data }` ou `{ chat_id, data, page, per_page, total, total_pages }`; itens incluem metadados ricos e `url`.
       sortKey: -1784931286611
     method: GET
     parameters:
       - name: limit
-        value: ''
-        description: 'máximo de vídeos a buscar (default 100)'
-        disabled: true
-      - name: thumbnail
-        value: ''
-        description: 'true (baixa a thumbnail real do Telegram, 1 download por item) | false (default, thumbnail: null, sem download)'
-        disabled: true
-      - name: per_page
-        value: ''
-        description: 'itens por página (até 100). Se omitido, herda o valor de limit quando page é informado.'
-        disabled: true
-      - name: page
-        value: ''
-        description: 'número da página (default 1). Paginação nativa via offsetId/addOffset do Telegram, exceto quando file_name é usado (aí vira em memória).'
+        value: '100'
+        description: máximo de vídeos a buscar
         disabled: true
       - name: file_name
         value: ''
-        description: 'filtra por file_name contendo o termo (case-insensitive, sem acentos). Força paginação em memória em vez de nativa.'
+        description: filtra por nome do arquivo e força paginação em memória
         disabled: true
-    settings:
-      renderRequestBody: true
-      encodeUrl: true
-      followRedirects: global
-      cookies:
-        send: true
-        store: true
-      rebuildPath: true
-  - url: '{{ _.BASE_URL }}/cache/purge'
-    name: purge cache
+      - name: thumbnail
+        value: 'false'
+        description: true baixa thumbnails reais; false retorna thumbnail null
+        disabled: true
+      - name: page
+        value: '1'
+        description: ativa paginação
+        disabled: true
+      - name: per_page
+        value: '10'
+        description: itens por página, até 100
+        disabled: true
+    settings: *settings
+  - url: '{{ _.BASE_URL }}/api/v1/video/stream/-1004325653681/6'
+    name: video stream
     meta:
-      id: req_aa49298d41af477fa834810a393a12b5
-      created: 1784932864371
-      modified: 1784934028112
-      isPrivate: false
-      description: |-
-        **Propósito**: zera imediatamente todo o cache em memória usado pelas rotas de leitura (`/videos`, `/channels`, `/channels/:channelId/videos`, `/list/:chatId`, e a resolução de metadados de `/video/:chatId/:messageId`) — a próxima chamada a qualquer uma delas busca dados frescos do Telegram, ignorando o TTL (`CACHE_TTL_MS`) ainda em vigor. Útil pra forçar atualização depois de enviar um vídeo novo, sem esperar o TTL expirar nem reiniciar o servidor.
-
-        **Acesso**: Privada.
-
-        **Query params**: nenhum.
-
-        **Resposta**: `{ "purged": true }`.
-      sortKey: -1784930713264
-    method: POST
-    settings:
-      renderRequestBody: true
-      encodeUrl: true
-      followRedirects: global
-      cookies:
-        send: true
-        store: true
-      rebuildPath: true
-  - url: '{{ _.BASE_URL }}/video/-1004325653681/6'
-    name: video
-    meta:
-      id: req_85ea8a5fd70d4699b3acce2dc274a9dd
+      id: req_video_stream_v1
       created: 1784933018622
       modified: 1784933303191
       isPrivate: false
       description: |-
-        **Propósito**: rota de streaming de fato — serve os bytes do vídeo com suporte a `Range` (206 Partial Content), buscando sob demanda do Telegram via `iterDownload`, sem baixar o arquivo inteiro em disco.
+        Serve bytes do vídeo com Range request, inline quando o MIME é `video/*`.
 
-        **Acesso**: Híbrida — aceita **Privada** (header `Authorization: Bearer`) **ou Pública (URL assinada)** via `?exp=&sig=`. É a única rota que aceita esse segundo modo, porque precisa ser abrível direto por VLC/`<video src>`/navegador, que não anexam headers customizados numa navegação simples.
-
-        **Query params**:
-        - `exp` — timestamp Unix de expiração (obrigatório via signed URL).
-        - `sig` — HMAC-SHA256 de `chatId:messageId:exp` (ver `src/signedUrl.js`). Ambos são gerados automaticamente pelas rotas `/videos` e `/channels/:channelId/videos`; não monte esse par manualmente.
-
-        **Cache**: a resolução de metadados do vídeo (mensagem/documento) é cacheada por `chatId:messageId` — Range requests subsequentes no mesmo vídeo (seeks do player) não repetem o lookup no Telegram. Os bytes em si (`iterDownload`) nunca são cacheados.
-
-        **Resposta**: stream binário do vídeo (`200` ou `206`), não JSON.
+        Acesso: Híbrida: Authorization ou URL assinada com `exp` e `sig`.
+        Resposta: stream binário (`200` ou `206`).
       sortKey: -1784933018622
     method: GET
     parameters:
       - name: exp
-        value: '1784936362'
-        description: 'timestamp Unix de expiração (obrigatório via signed URL)'
+        value: ''
+        description: timestamp Unix de expiração
         disabled: true
       - name: sig
-        value: 0b7ac75b6d343e5bd4c45d0f51fbd5e41282326caed97042a37f47b3920b979f
-        description: 'HMAC-SHA256 de chatId:messageId:exp (ver src/signedUrl.js)'
+        value: ''
+        description: HMAC-SHA256 de chatId:messageId:exp
         disabled: true
-    settings:
-      renderRequestBody: true
-      encodeUrl: true
-      followRedirects: global
-      cookies:
-        send: true
-        store: true
-      rebuildPath: true
-  - url: '{{ _.BASE_URL }}/list/1004325653681'
-    name: list videos by chat id
+    settings: *settings
+  - url: '{{ _.BASE_URL }}/api/v1/video/dl/-1004325653681/6'
+    name: video download
     meta:
-      id: req_45e29a7259a04c96bcb3d1ef330d5bd6
-      created: 1784933419110
-      modified: 1784933892685
+      id: req_video_dl_v1
+      created: 1784933018623
+      modified: 1784933303192
       isPrivate: false
       description: |-
-        **Propósito**: lista vídeos de qualquer chat (não só canais) por `chatId` — útil pra descobrir o `messageId` de um vídeo em "Saved Messages" (`chatId = me`) ou em qualquer conversa.
+        Baixa bytes do vídeo com Range request e `Content-Disposition: attachment`.
 
-        **Acesso**: Privada.
-
-        **Query params**:
-        - `limit` (default `100`) — máximo de vídeos a buscar.
-        - `page` / `per_page` (`per_page` até `100`) — paginação nativa, igual `/channels/:channelId/videos` (offsetId/addOffset do Telegram).
-
-        **Resposta**: sem paginação, array de `{ message_id, file_name, size, mime_type, date }` (sem `url` — rota só de descoberta). Com paginação, `{ data, page, per_page, total, total_pages }`.
-      sortKey: -1784933419110
+        Acesso: Híbrida: Authorization ou URL assinada com `exp` e `sig`.
+        Resposta: stream binário (`200` ou `206`).
+      sortKey: -1784933018623
     method: GET
     parameters:
-      - name: limit
-        value: '100'
-        description: 'máximo de vídeos a buscar (default 100)'
+      - name: exp
+        value: ''
+        description: timestamp Unix de expiração
         disabled: true
-      - name: page
-        value: '1'
-        description: 'número da página (default 1). Paginação nativa igual /channels/:channelId/videos.'
+      - name: sig
+        value: ''
+        description: HMAC-SHA256 de chatId:messageId:exp
         disabled: true
-      - name: per_page
-        value: '10'
-        description: 'itens por página (máx 100)'
-        disabled: true
-    settings:
-      renderRequestBody: true
-      encodeUrl: true
-      followRedirects: global
-      cookies:
-        send: true
-        store: true
-      rebuildPath: true
-  - url: '{{ _.BASE_URL }}/video/me'
+    settings: *settings
+  - url: '{{ _.BASE_URL }}/api/v1/video/upload/me'
     name: upload video
     meta:
-      id: req_7a3f9c2e1b8d4a6f9e0c3d5a7b1f2e4d
+      id: req_video_upload_v1
       created: 1784934100000
       modified: 1784934100000
       isPrivate: false
       description: |-
-        **Propósito**: envia um vídeo novo para `chatId` (aceita qualquer chat/canal que a conta tenha acesso — `me` pra Saved Messages, como neste exemplo, ou o ID de um canal, como no request "upload video (channel)" abaixo). É a única rota que permite controlar nome de arquivo e thumbnail — `PATCH` de um vídeo já existente só permite editar a descrição (ver `docs/ROUTES.md` pra o motivo).
+        Envia vídeo novo para `chatId`.
 
-        **Acesso**: Privada.
-
-        **Corpo**: `multipart/form-data`, sem gravação em disco:
-        - `file` (obrigatório) — o arquivo de vídeo (só `video/*`).
-        - `thumbnail` (opcional) — imagem de thumbnail (o Telegram exige jpg, <20KB, <=320x320px; erro dele propaga como 500).
-        - `file_name` (opcional) — nome customizado; se omitido, usa o nome original do arquivo.
-        - `description` (opcional, até 1024 caracteres) — vira a legenda do vídeo.
-
-        **Cache**: chama `clearAllCaches()` após um envio bem-sucedido.
-
-        **Resposta**: `{ chat_id, message_id, file_name, size, mime_type, date, url }` — `url` já vem assinada, pronta pra tocar o vídeo enviado.
+        Acesso: Privada.
+        Corpo: multipart `file` obrigatório, `thumbnail`, `file_name` e `description` opcionais.
+        Resposta: `{ chat_id, message_id, file_name, size, mime_type, date, url }`.
       sortKey: -1784934100000
     method: POST
     body:
@@ -342,74 +215,20 @@ collection:
         - name: description
           value: ''
           disabled: true
-    settings:
-      renderRequestBody: true
-      encodeUrl: true
-      followRedirects: global
-      cookies:
-        send: true
-        store: true
-      rebuildPath: true
-  - url: '{{ _.BASE_URL }}/video/-1004325653681'
-    name: upload video (channel)
+    settings: *settings
+  - url: '{{ _.BASE_URL }}/api/v1/video/update/-1004325653681/6'
+    name: update video description
     meta:
-      id: req_4f1e8b6a2d9c5e3f7b0a4d8c6e2f1b9a
-      created: 1784934150000
-      modified: 1784934150000
-      isPrivate: false
-      description: |-
-        **Propósito**: mesma rota `POST /video/:chatId` do request "upload video", mas apontando pra um canal (`-1004325653681`) em vez de `me`/Saved Messages — `chatId` aceita qualquer chat/canal que a conta tenha permissão de postar, não só Saved Messages.
-
-        **Acesso**: Privada.
-
-        **Corpo**: idêntico ao request "upload video" (`multipart/form-data`: `file` obrigatório, `thumbnail`/`file_name`/`description` opcionais).
-
-        **Resposta**: `{ chat_id, message_id, file_name, size, mime_type, date, url }`.
-      sortKey: -1784934150000
-    method: POST
-    body:
-      mimeType: multipart/form-data
-      params:
-        - name: file
-          type: file
-          fileName: ''
-        - name: thumbnail
-          type: file
-          fileName: ''
-          disabled: true
-        - name: file_name
-          value: ''
-          disabled: true
-        - name: description
-          value: ''
-          disabled: true
-    settings:
-      renderRequestBody: true
-      encodeUrl: true
-      followRedirects: global
-      cookies:
-        send: true
-        store: true
-      rebuildPath: true
-  - url: '{{ _.BASE_URL }}/video/-1004325653681/6'
-    name: edit video description
-    meta:
-      id: req_2b6e8f1a4c9d3e7b0a5f8c2d6e1b9a4c
+      id: req_video_update_v1
       created: 1784934200000
       modified: 1784934200000
       isPrivate: false
       description: |-
-        **Propósito**: edita a legenda/descrição de um vídeo já enviado.
+        Edita a legenda/descrição de um vídeo já enviado.
 
-        **Acesso**: Privada.
-
-        **Corpo**: `{ "description": "novo texto" }` (obrigatório, até 1024 caracteres).
-
-        **Cache**: chama `clearAllCaches()` após uma edição bem-sucedida.
-
-        **Resposta**: `{ "edited": true, "chat_id": ..., "message_id": ... }`.
-
-        **Erros**: `404` com `{ "error": message }` se a mensagem não existir ou não puder ser editada.
+        Acesso: Privada.
+        Corpo: `{ "description": "novo texto" }`.
+        Resposta: `{ "edited": true, "chat_id": ..., "message_id": ... }`.
       sortKey: -1784934200000
     method: PATCH
     headers:
@@ -421,41 +240,38 @@ collection:
         {
           "description": "nova descrição"
         }
-    settings:
-      renderRequestBody: true
-      encodeUrl: true
-      followRedirects: global
-      cookies:
-        send: true
-        store: true
-      rebuildPath: true
-  - url: '{{ _.BASE_URL }}/video/-1004325653681/6'
+    settings: *settings
+  - url: '{{ _.BASE_URL }}/api/v1/video/delete/-1004325653681/6'
     name: delete video
     meta:
-      id: req_9d4a1e6b3f8c2a5d7e0b9f4c1a6d3e8b
+      id: req_video_delete_v1
       created: 1784934300000
       modified: 1784934300000
       isPrivate: false
       description: |-
-        **Propósito**: exclui um vídeo já enviado (`revoke: true` — some pra todos os participantes do chat, não só localmente).
+        Exclui um vídeo já enviado (`revoke: true`).
 
-        **Acesso**: Privada.
-
-        **Cache**: chama `clearAllCaches()` após uma exclusão bem-sucedida.
-
-        **Resposta**: `{ "deleted": true, "chat_id": ..., "message_id": ... }`.
-
-        **Erros**: `404` com `{ "error": message }` se a mensagem não existir.
+        Acesso: Privada.
+        Resposta: `{ "deleted": true, "chat_id": ..., "message_id": ... }`.
       sortKey: -1784934300000
     method: DELETE
-    settings:
-      renderRequestBody: true
-      encodeUrl: true
-      followRedirects: global
-      cookies:
-        send: true
-        store: true
-      rebuildPath: true
+    settings: *settings
+  - url: '{{ _.BASE_URL }}/api/v1/cache/purge'
+    name: purge cache
+    meta:
+      id: req_cache_purge_v1
+      created: 1784932864371
+      modified: 1784934028112
+      isPrivate: false
+      description: |-
+        Zera todo o cache em memória.
+
+        Acesso: Privada.
+        Query params: nenhum.
+        Resposta: `{ "purged": true }`.
+      sortKey: -1784930713264
+    method: POST
+    settings: *settings
 cookieJar:
   name: Default Jar
   meta:
@@ -468,6 +284,5 @@ environments:
     id: env_7879e147c464f669c5f3e3e5017c9360f2e7351f
     created: 1784930713130
     modified: 1784930931849
-    isPrivate: false
   data:
     BASE_URL: http://localhost:8787

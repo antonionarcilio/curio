@@ -1,9 +1,9 @@
+import { extractDigits } from '@/services/videos/filters';
 import { listChannels } from '@/telegram-client';
+import { isPaginationRequested, paginate, paginationQuerySchema, resolvePagination } from '@/utils/pagination';
 import { includesSearchTerm } from '@/utils/text-search';
 import express, { type Request, type Response } from 'express';
 import { z } from 'zod';
-import { isPaginationRequested, paginate, paginationQuerySchema, resolvePagination } from './pagination';
-import { extractDigits } from './video-filters';
 
 const router = express.Router();
 

@@ -11,7 +11,8 @@ jest.mock('@/telegram-client', () => ({
   getVideoMessage: mockGetVideoMessage,
 }));
 
-import streamVideoRouter from '@/routes/stream-video.route';
+import downloadVideoRouter from '@/routes/video/dl/route';
+import streamVideoRouter from '@/routes/video/stream/route';
 import { mountRouter } from '@test/helpers/mount-router';
 
 function fakeAsyncIterable(chunks: Buffer[]) {
@@ -22,9 +23,9 @@ function fakeAsyncIterable(chunks: Buffer[]) {
   };
 }
 
-const buildApp = () => mountRouter(streamVideoRouter);
+const buildApp = () => mountRouter([streamVideoRouter, downloadVideoRouter]);
 
-describe('GET /video/:chatId/:messageId', () => {
+describe('GET /video/stream/:chatId/:messageId', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -39,7 +40,7 @@ describe('GET /video/:chatId/:messageId', () => {
     mockIterDownload.mockReturnValue(fakeAsyncIterable([Buffer.from('hello '), Buffer.from('world')]));
 
     const res = await request(buildApp())
-      .get('/video/chat1/1')
+      .get('/video/stream/chat1/1')
       .buffer(true)
       .parse((response, callback) => {
         const chunks: Buffer[] = [];
@@ -63,7 +64,7 @@ describe('GET /video/:chatId/:messageId', () => {
     mockIterDownload.mockReturnValue(fakeAsyncIterable([Buffer.from('hello')]));
 
     const res = await request(buildApp())
-      .get('/video/chat1/1')
+      .get('/video/stream/chat1/1')
       .set('Range', 'bytes=0-4')
       .buffer(true)
       .parse((response, callback) => {
@@ -81,7 +82,7 @@ describe('GET /video/:chatId/:messageId', () => {
   it('returns 404 with the error message when getVideoMessage rejects', async () => {
     mockGetVideoMessage.mockRejectedValue(new Error('Mensagem não encontrada'));
 
-    const res = await request(buildApp()).get('/video/chat1/999');
+    const res = await request(buildApp()).get('/video/stream/chat1/999');
 
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: 'Mensagem não encontrada' });
@@ -96,7 +97,7 @@ describe('GET /video/:chatId/:messageId', () => {
     });
     mockIterDownload.mockReturnValue(fakeAsyncIterable([Buffer.from('12345')]));
 
-    const res = await request(buildApp()).get('/video/chat1/1');
+    const res = await request(buildApp()).get('/video/stream/chat1/1');
 
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toBe('application/octet-stream');
@@ -112,12 +113,28 @@ describe('GET /video/:chatId/:messageId', () => {
     });
     mockIterDownload.mockReturnValue(fakeAsyncIterable([Buffer.from('hello')]));
 
-    await request(buildApp()).get('/video/chat1/1').set('Range', 'bytes=2-6');
+    await request(buildApp()).get('/video/stream/chat1/1').set('Range', 'bytes=2-6');
 
     const callArgs = mockIterDownload.mock.calls[0][0];
     expect(typeof callArgs.offset).not.toBe('bigint');
     expect(bigInt.isInstance(callArgs.offset)).toBe(true);
     expect(callArgs.offset.eq(bigInt(2))).toBe(true);
+  });
+
+  it('forces attachment disposition on the download route', async () => {
+    mockGetVideoMessage.mockResolvedValue({
+      message: { media: {} },
+      size: 11,
+      mimeType: 'video/mp4',
+      fileName: 'video.mp4',
+    });
+    mockIterDownload.mockReturnValue(fakeAsyncIterable([Buffer.from('hello world')]));
+
+    const res = await request(buildApp()).get('/video/dl/chat1/1');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toBe('video/mp4');
+    expect(res.headers['content-disposition']).toMatch(/^attachment;/);
   });
 
   it('waits for the "drain" event when res.write reports backpressure', async () => {
@@ -147,7 +164,7 @@ describe('GET /video/:chatId/:messageId', () => {
     app.use(streamVideoRouter);
 
     const res = await request(app)
-      .get('/video/chat1/1')
+      .get('/video/stream/chat1/1')
       .buffer(true)
       .parse((response, callback) => {
         const chunks: Buffer[] = [];
@@ -180,7 +197,7 @@ describe('GET /video/:chatId/:messageId', () => {
     // send a JSON error body on top of an already-started response.
     let caughtError: Error | undefined;
     try {
-      await request(buildApp()).get('/video/chat1/1').buffer(true);
+      await request(buildApp()).get('/video/stream/chat1/1').buffer(true);
     } catch (err) {
       caughtError = err as Error;
     }
@@ -220,7 +237,7 @@ describe('GET /video/:chatId/:messageId', () => {
     const { port } = server.address() as { port: number };
 
     await new Promise<void>((resolve) => {
-      const clientReq = http.get({ host: '127.0.0.1', port, path: '/video/chat1/1' }, (res) => {
+      const clientReq = http.get({ host: '127.0.0.1', port, path: '/video/stream/chat1/1' }, (res) => {
         res.once('data', () => {
           clientReq.destroy();
         });

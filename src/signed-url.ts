@@ -10,7 +10,7 @@ function sign(chatId: string, messageId: string | number, exp: number): string {
 export function createSignedUrl(base: string, chatId: string, messageId: string | number): string {
   const exp = Math.floor(Date.now() / 1000) + TTL_SECONDS;
   const sig = sign(chatId, messageId, exp);
-  return `${base}/video/${chatId}/${messageId}?exp=${exp}&sig=${sig}`;
+  return `${base}/api/v1/video/stream/${chatId}/${messageId}?exp=${exp}&sig=${sig}`;
 }
 
 export function verifySignedUrl(

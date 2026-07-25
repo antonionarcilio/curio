@@ -4,7 +4,7 @@ import {
   paginate,
   paginationQuerySchema,
   resolvePagination,
-} from '@/routes/pagination';
+} from '@/utils/pagination';
 
 describe('paginationQuerySchema', () => {
   it('accepts a valid page/per_page pair, coercing strings from query params', () => {

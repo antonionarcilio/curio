@@ -6,7 +6,7 @@ jest.mock('@/telegram-client', () => ({
   uploadVideo: mockUploadVideo,
 }));
 
-import uploadVideoRouter from '@/routes/upload-video.route';
+import uploadVideoRouter from '@/routes/video/upload/route';
 import { mountRouter } from '@test/helpers/mount-router';
 
 const buildApp = () => mountRouter(uploadVideoRouter);
@@ -19,7 +19,7 @@ const uploadedVideo = {
   date: 1700000000,
 };
 
-describe('POST /video/:chatId', () => {
+describe('POST /video/upload/:chatId', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -28,7 +28,7 @@ describe('POST /video/:chatId', () => {
     mockUploadVideo.mockResolvedValue(uploadedVideo);
 
     const res = await request(buildApp())
-      .post('/video/me')
+      .post('/video/upload/me')
       .field('file_name', 'custom.mp4')
       .field('description', 'uma descrição')
       .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' })
@@ -37,7 +37,7 @@ describe('POST /video/:chatId', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject(uploadedVideo);
     expect(res.body.chat_id).toBe('me');
-    expect(res.body.url).toMatch(/^http:\/\/.+\/video\/me\/42\?exp=\d+&sig=[0-9a-f]+$/);
+    expect(res.body.url).toMatch(/^http:\/\/.+\/api\/v1\/video\/stream\/me\/42\?exp=\d+&sig=[0-9a-f]+$/);
 
     expect(mockUploadVideo).toHaveBeenCalledTimes(1);
     const [chatId, params] = mockUploadVideo.mock.calls[0];
@@ -53,7 +53,7 @@ describe('POST /video/:chatId', () => {
     mockUploadVideo.mockResolvedValue(uploadedVideo);
 
     const res = await request(buildApp())
-      .post('/video/me')
+      .post('/video/upload/me')
       .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' });
 
     expect(res.status).toBe(200);
@@ -64,7 +64,7 @@ describe('POST /video/:chatId', () => {
   });
 
   it('returns 400 when no file is attached', async () => {
-    const res = await request(buildApp()).post('/video/me').field('description', 'sem arquivo');
+    const res = await request(buildApp()).post('/video/upload/me').field('description', 'sem arquivo');
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBeDefined();
@@ -73,7 +73,7 @@ describe('POST /video/:chatId', () => {
 
   it('returns 400 when the uploaded file mimetype is not video/*', async () => {
     const res = await request(buildApp())
-      .post('/video/me')
+      .post('/video/upload/me')
       .attach('file', Buffer.from('not-a-video'), { filename: 'file.txt', contentType: 'text/plain' });
 
     expect(res.status).toBe(400);
@@ -85,7 +85,7 @@ describe('POST /video/:chatId', () => {
     mockUploadVideo.mockRejectedValue(new Error('boom'));
 
     const res = await request(buildApp())
-      .post('/video/me')
+      .post('/video/upload/me')
       .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' });
 
     expect(res.status).toBe(500);

@@ -47,18 +47,17 @@ Saved Messages, e limita downloads a 20MB.
 Toda rota exige o token em `Authorization: Bearer SEU_TOKEN`.
 
 ```bash
-curl -H "Authorization: Bearer SEU_TOKEN" http://localhost:8787/channels
+curl -H "Authorization: Bearer SEU_TOKEN" http://localhost:8787/api/v1/channels
 ```
 
-A rota de streaming (`/video/:chatId/:messageId`) precisa ser abrível direto
-por URL (VLC, `<video src>`), que não enviam headers customizados numa
-navegação simples. Em vez de aceitar o `ACCESS_TOKEN` mestre na query string
-(o que o exporia por completo caso a URL vaze em algum lugar — histórico,
-logs, etc.), ela aceita uma **URL assinada e com expiração** (`?exp=...&sig=...`),
-gerada pelas rotas de descoberta (`/videos`, `/channels/:channelId/videos`) e
-válida só para aquele `chatId`/`messageId` específico, por 1 hora. Assim, se
-uma dessas URLs vazar, o dano fica limitado àquele vídeo até a assinatura
-expirar — o token mestre nunca é exposto.
+As rotas de streaming e download (`/api/v1/video/stream/:chatId/:messageId` e
+`/api/v1/video/dl/:chatId/:messageId`) precisam ser abríveis direto por URL
+(VLC, `<video src>`, navegador), que não enviam headers customizados numa
+navegação simples. Em vez de aceitar o `ACCESS_TOKEN` mestre na query string,
+elas aceitam uma **URL assinada e com expiração** (`?exp=...&sig=...`), válida
+só para aquele `chatId`/`messageId` específico por 1 hora. Assim, se uma dessas
+URLs vazar, o dano fica limitado àquele vídeo até a assinatura expirar — o
+token mestre nunca é exposto.
 
 **Modo dev (`NODE_ENV=development`)**: se a requisição não trouxer o header
 `Authorization`, o servidor o preenche automaticamente com o `ACCESS_TOKEN`
@@ -71,23 +70,22 @@ explicitamente que está em dev.
 
 ## Rotas
 
-O servidor expõe: `/routes` (autodescoberta), `/videos` (todos os vídeos
-acessíveis, com URL pronta), `/channels` (seus canais), `/channels/:channelId/videos`,
-`/list/:chatId` (descoberta por chat), `/video/:chatId/:messageId` (streaming
-de fato, `GET`; editar descrição, `PATCH`; excluir, `DELETE`), e
-`POST /video/:chatId` (upload de vídeo novo). Referência completa — propósito,
-query params aceitos e se cada rota é pública ou privada — em
+O servidor expõe rotas versionadas em `/api/v1`: `channels`,
+`videos/grouped`, `videos/by/:chatId`, `video/stream/:chatId/:messageId`,
+`video/dl/:chatId/:messageId`, `video/upload/:chatId`,
+`video/update/:chatId/:messageId`, `video/delete/:chatId/:messageId` e
+`cache/purge`. Referência completa — propósito, query params aceitos e se cada
+rota é privada ou híbrida — em
 **[`docs/ROUTES.md`](docs/ROUTES.md)**.
 
-A forma mais prática de usar o servidor: chame `/videos`, escolha o vídeo na
-lista, e abra o campo `url` retornado direto no VLC/navegador — já vem
-assinado e expira em 1h, sem precisar descobrir `chat_id`/`message_id` na mão.
+A forma mais prática de usar o servidor: chame `/api/v1/videos/grouped`,
+escolha o vídeo na lista, e abra o campo `url` retornado direto no
+VLC/navegador — já vem assinado e expira em 1h.
 
 ## Segurança
 
 O `ACCESS_TOKEN` é obrigatório em toda requisição, via header
-`Authorization: Bearer ...`. A rota de streaming nunca aceita o token mestre
-na query string — só URLs assinadas com expiração de 1h, escopadas a um único
-vídeo (ver "Autenticação"). Trate o `ACCESS_TOKEN` como uma senha: não o
-publique em lugares públicos. Uma URL assinada que vaze expõe só aquele vídeo,
-e só até expirar.
+`Authorization: Bearer ...`. As rotas `video/stream` e `video/dl` nunca aceitam
+o token mestre na query string — só URLs assinadas com expiração de 1h,
+escopadas a um único vídeo (ver "Autenticação"). Trate o `ACCESS_TOKEN` como
+uma senha: não o publique em lugares públicos.

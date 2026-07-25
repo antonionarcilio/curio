@@ -2,10 +2,10 @@ import express, { type Router } from 'express';
 
 type MountRouterOptions = { json?: boolean };
 
-function mountRouter(router: Router, { json }: MountRouterOptions = {}) {
+function mountRouter(router: Router | Router[], { json }: MountRouterOptions = {}) {
   const app = express();
   if (json) app.use(express.json());
-  app.use(router);
+  app.use(...(Array.isArray(router) ? router : [router]));
   return app;
 }
 

@@ -2,9 +2,9 @@ import { clearAllCaches } from '@/cache/ttl-cache';
 import { client, ensureConnected, getChannelVideos, getVideoThumbnail } from '@/telegram-client';
 import { removeFixture, TARGETS, uploadFixture } from './helpers/video-fixture';
 
-// getChannelVideos é a função usada por GET /channels/:channelId/videos —
-// distinta de listVideos (usada por GET /list/:chatId) — então só faz sentido
-// exercitar aqui pra alvos que são de fato canais.
+// getChannelVideos continua cobrindo a resolução de título/entidade específica
+// de canais, separada de listVideos, então só faz sentido exercitar aqui pra
+// alvos que são de fato canais.
 const channelTargets = TARGETS.filter((target) => target.isChannel);
 
 beforeAll(() => ensureConnected());

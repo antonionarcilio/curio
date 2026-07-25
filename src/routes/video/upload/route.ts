@@ -1,9 +1,9 @@
+import { SAFE_MIME_TYPE } from '@/http/video-response';
 import { createSignedUrl } from '@/signed-url';
 import { uploadVideo } from '@/telegram-client';
 import express, { type Request, type Response } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
-import { SAFE_MIME_TYPE } from './http-utils';
 
 const router = express.Router();
 
@@ -18,7 +18,7 @@ const uploadBodySchema = z.object({
   description: z.string().trim().min(1).max(1024).optional(),
 });
 
-router.post('/video/:chatId', uploadFields, async (req: Request, res: Response) => {
+router.post('/video/upload/:chatId', uploadFields, async (req: Request, res: Response) => {
   const files = req.files as { file?: Express.Multer.File[]; thumbnail?: Express.Multer.File[] } | undefined;
   const file = files?.file?.[0];
   if (!file) {

@@ -23,8 +23,9 @@ As listagens aceitam `limit`, `page` e `per_page`:
 - `per_page` é limitado a `100`. Se só `page` for enviado, `per_page` herda
   `limit`, também limitado a `100`.
 
-`/api/v1/videos/by/:chatId` pagina nativamente quando não há `file_name`; com
-`file_name`, busca até `limit`, filtra em memória e só então pagina. Em
+`/api/v1/videos/by/:chatId` pagina nativamente quando não há `file_name` nem
+`description`; com qualquer um desses filtros, busca até `limit`, filtra em
+memória e só então pagina. Em
 `/api/v1/videos/grouped` e `/api/v1/channels`, a paginação é em memória.
 
 ## `GET /api/v1/channels`
@@ -43,11 +44,11 @@ As listagens aceitam `limit`, `page` e `per_page`:
 - **Propósito**: percorre todos os chats/canais (`getDialogs`) e lista vídeos
   encontrados em cada um, com URL de streaming assinada pronta.
 - **Acesso**: Privada.
-- **Query params**: `limit`, `chat_id`, `chat_title`, `file_name`, `page`,
-  `per_page`.
+- **Query params**: `limit`, `chat_id`, `chat_title`, `file_name`,
+  `description`, `page`, `per_page`.
 - **Resposta**: sem paginação, array de `{ chat_id, chat_title, message_id,
-  file_name, size, mime_type, date, url }`. Com paginação, `{ data, page,
-  per_page, total, total_pages }`.
+  file_name, size, mime_type, date, description, url }`. Com paginação,
+  `{ data, page, per_page, total, total_pages }`.
 - **Observação**: `limit` é por chat, não total global; `limit=1` pode retornar
   um item por chat com vídeos.
 
@@ -56,8 +57,8 @@ As listagens aceitam `limit`, `page` e `per_page`:
 - **Propósito**: lista vídeos de qualquer peer Telegram aceito por GramJS:
   canal, grupo, conversa, username ou `"me"` para Saved Messages.
 - **Acesso**: Privada.
-- **Query params**: `limit`, `file_name`, `thumbnail` (`true` | `false`,
-  default `false`), `page`, `per_page`.
+- **Query params**: `limit`, `file_name`, `description`, `thumbnail` (`true` |
+  `false`, default `false`), `page`, `per_page`.
 - **Resposta**: sem paginação, `{ chat_id, data: [...] }`. Com paginação,
   `{ chat_id, data, page, per_page, total, total_pages }`.
 - **Item em `data`**: `{ message_id, file_name, size, mime_type, date,
@@ -92,8 +93,9 @@ As listagens aceitam `limit`, `page` e `per_page`:
   - `file` obrigatório, somente `video/*`.
   - `thumbnail` opcional; o Telegram exige JPG pequeno e rejeita valores
     inválidos.
-  - `file_name` opcional.
   - `description` opcional, até 1024 caracteres.
+  - O nome do arquivo não é configurável: `file_name` na resposta é sempre o
+    nome original do arquivo enviado.
 - **Cache**: chama `clearAllCaches()` após sucesso.
 - **Resposta**: `{ chat_id, message_id, file_name, size, mime_type, date,
   url }`, com `url` apontando para `/api/v1/video/stream/...`.
@@ -126,6 +128,5 @@ As listagens aceitam `limit`, `page` e `per_page`:
 
 `client.editMessage` do GramJS só troca texto/arquivo, mas não expõe de forma
 segura `attributes` para renomear nem `thumb` para trocar thumbnail de uma
-mensagem já existente. Nome customizado e thumbnail devem ser definidos no
-upload; para mudar esses dados depois, seria necessário reenviar o vídeo e
-perder o `message_id` original.
+mensagem já existente. Thumbnail deve ser definido no upload; para mudá-lo
+depois, seria necessário reenviar o vídeo e perder o `message_id` original.

@@ -1,6 +1,6 @@
 type: collection.insomnia.rest/5.0
 schema_version: '5.1'
-name: endpoints - dev
+name: video / dev
 meta:
   id: wrk_da408a30875f4fdfabe964a34e520835
   created: 1784930713129
@@ -69,8 +69,8 @@ collection:
         Lista vídeos encontrados em todos os chats/canais, com URL de streaming assinada.
 
         Acesso: Privada.
-        Query params: `limit`, `chat_id`, `chat_title`, `file_name`, `page`, `per_page`.
-        Resposta: array de `{ chat_id, chat_title, message_id, file_name, size, mime_type, date, url }` ou envelope paginado.
+        Query params: `limit`, `chat_id`, `chat_title`, `file_name`, `description`, `page`, `per_page`.
+        Resposta: array de `{ chat_id, chat_title, message_id, file_name, size, mime_type, date, description, url }` ou envelope paginado.
       sortKey: -1784931131777
     method: GET
     parameters:
@@ -89,6 +89,10 @@ collection:
       - name: file_name
         value: ''
         description: filtra por nome do arquivo
+        disabled: true
+      - name: description
+        value: '#hashtag'
+        description: filtra por descrição/legenda
         disabled: true
       - name: page
         value: '1'
@@ -110,7 +114,7 @@ collection:
         Lista vídeos de um chat/canal/username ou `me`.
 
         Acesso: Privada.
-        Query params: `limit`, `file_name`, `thumbnail`, `page`, `per_page`.
+        Query params: `limit`, `file_name`, `description`, `thumbnail`, `page`, `per_page`.
         Resposta: `{ chat_id, data }` ou `{ chat_id, data, page, per_page, total, total_pages }`; itens incluem metadados ricos e `url`.
       sortKey: -1784931286611
     method: GET
@@ -122,6 +126,10 @@ collection:
       - name: file_name
         value: ''
         description: filtra por nome do arquivo e força paginação em memória
+        disabled: true
+      - name: description
+        value: '#javascript'
+        description: filtra por descrição/legenda e força paginação em memória
         disabled: true
       - name: thumbnail
         value: 'false'
@@ -195,7 +203,7 @@ collection:
         Envia vídeo novo para `chatId`.
 
         Acesso: Privada.
-        Corpo: multipart `file` obrigatório, `thumbnail`, `file_name` e `description` opcionais.
+        Corpo: multipart `file` obrigatório, `thumbnail` e `description` opcionais. O nome do arquivo não é configurável.
         Resposta: `{ chat_id, message_id, file_name, size, mime_type, date, url }`.
       sortKey: -1784934100000
     method: POST
@@ -208,9 +216,6 @@ collection:
         - name: thumbnail
           type: file
           fileName: ''
-          disabled: true
-        - name: file_name
-          value: ''
           disabled: true
         - name: description
           value: ''

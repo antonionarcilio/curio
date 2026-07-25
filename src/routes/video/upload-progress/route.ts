@@ -1,4 +1,4 @@
-import { getJob } from '@/jobs/upload-progress-store';
+import { getJob } from '@/services/upload-progress-store';
 import express, { type Request, type Response } from 'express';
 
 const router = express.Router();

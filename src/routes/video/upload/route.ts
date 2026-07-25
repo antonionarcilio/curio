@@ -1,8 +1,8 @@
 import config from '@/config';
-import { SAFE_MIME_TYPE } from '@/http/video-response';
-import { completeJob, createJob, failJob, setProgress, startJob } from '@/jobs/upload-progress-store';
+import { completeJob, createJob, failJob, setProgress, startJob } from '@/services/upload-progress-store';
 import { createSignedUrl } from '@/signed-url';
 import { MAX_UPLOAD_SIZE_BYTES, uploadVideo } from '@/telegram-client';
+import { SAFE_MIME_TYPE } from '@/utils/http-response';
 import { randomUUID } from 'crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';

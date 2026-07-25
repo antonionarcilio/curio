@@ -1,4 +1,4 @@
-import { streamTelegramVideo } from '@/http/video-stream';
+import { streamTelegramVideo } from '@/services/videos/stream';
 import express, { type Request, type Response } from 'express';
 
 const router = express.Router();

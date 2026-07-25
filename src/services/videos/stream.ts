@@ -1,7 +1,7 @@
 import { client, getVideoMessage } from '@/telegram-client';
+import { buildContentDisposition, CHUNK_SIZE, parseRange, SAFE_MIME_TYPE } from '@/utils/http-response';
 import bigInt from 'big-integer';
 import type { Request, Response } from 'express';
-import { buildContentDisposition, CHUNK_SIZE, parseRange, SAFE_MIME_TYPE } from './video-response';
 
 type StreamDisposition = 'inline' | 'attachment';
 

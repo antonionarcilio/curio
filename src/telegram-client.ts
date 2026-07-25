@@ -2,9 +2,9 @@ import pLimit from 'p-limit';
 import { Api, TelegramClient } from 'telegram';
 import { CustomFile } from 'telegram/client/uploads';
 import { StringSession } from 'telegram/sessions';
-import { clearAllCaches, withCache } from './cache/ttl-cache';
 import config from './config';
 import { probeVideoMetadata } from './services/videos/probe';
+import { clearAllCaches, withCache } from './utils/ttl-cache';
 
 const client = new TelegramClient(new StringSession(config.session), config.apiId, config.apiHash, {
   connectionRetries: 5,

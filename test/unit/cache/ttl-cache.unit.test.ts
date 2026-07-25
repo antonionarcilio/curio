@@ -1,4 +1,4 @@
-import { clearAllCaches, createTtlCache, withCache } from '@/cache/ttl-cache';
+import { clearAllCaches, createTtlCache, withCache } from '@/utils/ttl-cache';
 
 describe('createTtlCache', () => {
   beforeEach(() => {

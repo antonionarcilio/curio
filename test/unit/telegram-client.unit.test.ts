@@ -33,7 +33,6 @@ jest.mock('@/services/videos/probe', () => ({
   probeVideoMetadata: mockProbeVideoMetadata,
 }));
 
-import { clearAllCaches } from '@/cache/ttl-cache';
 import {
   client,
   deleteVideoMessage,
@@ -47,6 +46,7 @@ import {
   listVideos,
   uploadVideo,
 } from '@/telegram-client';
+import { clearAllCaches } from '@/utils/ttl-cache';
 
 function makeDocument(overrides: Record<string, unknown> = {}) {
   return {

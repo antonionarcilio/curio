@@ -1,4 +1,4 @@
-import { buildContentDisposition, parseRange } from '@/http/video-response';
+import { buildContentDisposition, parseRange } from '@/utils/http-response';
 
 describe('parseRange', () => {
   const size = 1000;

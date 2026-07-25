@@ -10,8 +10,8 @@ jest.mock('@/telegram-client', () => ({
   MAX_UPLOAD_SIZE_BYTES: 20,
 }));
 
-import { getJob } from '@/jobs/upload-progress-store';
 import uploadVideoRouter from '@/routes/video/upload/route';
+import { getJob } from '@/services/upload-progress-store';
 import { mountRouter } from '@test/helpers/mount-router';
 
 const buildApp = () => mountRouter(uploadVideoRouter);

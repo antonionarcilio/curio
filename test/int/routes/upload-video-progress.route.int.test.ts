@@ -1,5 +1,5 @@
-import { completeJob, createJob, failJob, setProgress, startJob } from '@/jobs/upload-progress-store';
 import progressRouter from '@/routes/video/upload-progress/route';
+import { completeJob, createJob, failJob, setProgress, startJob } from '@/services/upload-progress-store';
 import { mountRouter } from '@test/helpers/mount-router';
 import request from 'supertest';
 

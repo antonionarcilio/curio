@@ -1,11 +1,11 @@
 import request from 'supertest';
 
-jest.mock('@/cache/ttl-cache', () => ({
+jest.mock('@/utils/ttl-cache', () => ({
   clearAllCaches: jest.fn(),
 }));
 
-import { clearAllCaches } from '@/cache/ttl-cache';
 import purgeCacheRouter from '@/routes/cache/purge/route';
+import { clearAllCaches } from '@/utils/ttl-cache';
 import { mountRouter } from '@test/helpers/mount-router';
 
 describe('POST /cache/purge', () => {

@@ -1,5 +1,5 @@
 import config from '@/config';
-import { completeJob, createJob, failJob, getJob, setProgress, startJob } from '@/jobs/upload-progress-store';
+import { completeJob, createJob, failJob, getJob, setProgress, startJob } from '@/services/upload-progress-store';
 
 describe('upload-progress-store', () => {
   beforeEach(() => {

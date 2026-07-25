@@ -19,6 +19,7 @@ function makeVideo(overrides: Partial<VideoListEntry> = {}): VideoListEntry {
     size: 100,
     mime_type: 'video/mp4',
     date: 1700000000,
+    description: null,
     ...overrides,
   };
 }
@@ -40,13 +41,28 @@ describe('GET /videos/grouped', () => {
     expect(res.body[0].url).toMatch(/^http:\/\/.+\/api\/v1\/video\/stream\/-100111\/1\?exp=\d+&sig=[0-9a-f]+$/);
   });
 
-  it('filters by chat_id, chat_title, and file_name', async () => {
+  it('filters by chat_id, chat_title, file_name, and description', async () => {
     mockListAllVideos.mockResolvedValue([
-      makeVideo({ message_id: 1, chat_id: '-100111', file_name: 'a.mp4' }),
-      makeVideo({ message_id: 2, chat_id: '-100222', file_name: 'b.mp4' }),
+      makeVideo({
+        message_id: 1,
+        chat_id: '-100111',
+        chat_title: 'Séries',
+        file_name: 'a.mp4',
+        description: '#JavaScript',
+      }),
+      makeVideo({ message_id: 2, chat_id: '-100111', chat_title: 'Séries', file_name: 'a.mp4', description: '#JS' }),
+      makeVideo({
+        message_id: 3,
+        chat_id: '-100222',
+        chat_title: 'Filmes',
+        file_name: 'b.mp4',
+        description: '#JavaScript',
+      }),
     ]);
 
-    const res = await request(buildApp()).get('/videos/grouped').query({ chat_id: '100111' });
+    const res = await request(buildApp())
+      .get('/videos/grouped')
+      .query({ chat_id: '100111', chat_title: 'series', file_name: 'a', description: '#javascript' });
 
     expect(res.body).toHaveLength(1);
     expect(res.body[0].message_id).toBe(1);

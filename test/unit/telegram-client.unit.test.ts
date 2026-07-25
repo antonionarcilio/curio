@@ -5,6 +5,7 @@ const mockClient = {
   getEntity: jest.fn(),
   iterDownload: jest.fn(),
   sendFile: jest.fn(),
+  uploadFile: jest.fn(),
   editMessage: jest.fn(),
   deleteMessages: jest.fn(),
   downloadMedia: jest.fn(),
@@ -15,6 +16,7 @@ jest.mock('telegram', () => ({
   Api: {
     InputMessagesFilterVideo: jest.fn(() => ({})),
     DocumentAttributeFilename: jest.fn((opts) => ({ className: 'DocumentAttributeFilename', ...opts })),
+    DocumentAttributeVideo: jest.fn((opts) => ({ className: 'DocumentAttributeVideo', ...opts })),
   },
 }));
 
@@ -24,6 +26,11 @@ jest.mock('telegram/sessions', () => ({
 
 jest.mock('telegram/client/uploads', () => ({
   CustomFile: jest.fn().mockImplementation((name, size, path, buffer) => ({ name, size, path, buffer })),
+}));
+
+const mockProbeVideoMetadata = jest.fn();
+jest.mock('@/services/videos/probe', () => ({
+  probeVideoMetadata: mockProbeVideoMetadata,
 }));
 
 import { clearAllCaches } from '@/cache/ttl-cache';
@@ -71,10 +78,14 @@ function withTotal<T>(items: T[], total?: number) {
   return Object.assign(items, { total: total ?? items.length });
 }
 
+const UPLOADED_FILE_HANDLE = { className: 'InputFile' };
+
 describe('telegram-client', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     clearAllCaches();
+    mockClient.uploadFile.mockResolvedValue(UPLOADED_FILE_HANDLE);
+    mockProbeVideoMetadata.mockResolvedValue(null);
   });
 
   it('client is the mocked TelegramClient instance', () => {
@@ -436,7 +447,7 @@ describe('telegram-client', () => {
   });
 
   describe('uploadVideo', () => {
-    it('sends the file via sendFile with a custom filename, thumbnail and caption, and returns the metadata', async () => {
+    it('sends the file via sendFile with the original filename, thumbnail and caption, and returns the metadata', async () => {
       mockClient.sendFile.mockResolvedValue(
         makeMessage({
           id: 55,
@@ -444,7 +455,7 @@ describe('telegram-client', () => {
             document: {
               size: 2048,
               mimeType: 'video/mp4',
-              attributes: [{ className: 'DocumentAttributeFilename', fileName: 'custom-name.mp4' }],
+              attributes: [{ className: 'DocumentAttributeFilename', fileName: 'original.mp4' }],
             },
           },
         }),
@@ -453,10 +464,14 @@ describe('telegram-client', () => {
       const result = await uploadVideo('me', {
         buffer: Buffer.from('video-bytes'),
         originalFileName: 'original.mp4',
-        fileName: 'custom-name.mp4',
         description: 'uma descrição',
         thumbnailBuffer: Buffer.from('thumb-bytes'),
       });
+
+      expect(mockClient.uploadFile).toHaveBeenCalledTimes(1);
+      const uploadFileParams = mockClient.uploadFile.mock.calls[0][0];
+      expect(uploadFileParams.file).toMatchObject({ name: 'original.mp4' });
+      expect(uploadFileParams.maxBufferSize).toBeGreaterThan(Buffer.from('video-bytes').length);
 
       expect(mockClient.sendFile).toHaveBeenCalledTimes(1);
       const [chatId, options] = mockClient.sendFile.mock.calls[0];
@@ -464,20 +479,54 @@ describe('telegram-client', () => {
       expect(options.caption).toBe('uma descrição');
       expect(options.forceDocument).toBe(false);
       expect(options.supportsStreaming).toBe(true);
-      expect(options.file).toMatchObject({ name: 'custom-name.mp4' });
-      expect(options.thumb).toMatchObject({ name: 'thumb.jpg' });
-      expect(options.attributes[0]).toMatchObject({ fileName: 'custom-name.mp4' });
+      // sendFile recebe o handle já enviado (retorno de uploadFile), não o
+      // CustomFile bruto — é isso que faz o sendFile pular a etapa de upload
+      // (que sempre tentaria ler de `file.path`, vazio aqui) e ir direto pra
+      // montagem da mensagem.
+      expect(options.file).toBe(UPLOADED_FILE_HANDLE);
+      // thumb precisa ser o Buffer cru — sendFile só reconhece
+      // Buffer.isBuffer(thumb) nesse branch, nunca um CustomFile.
+      expect(Buffer.isBuffer(options.thumb)).toBe(true);
+      expect(options.attributes[0]).toMatchObject({ fileName: 'original.mp4' });
 
       expect(result).toEqual({
         message_id: 55,
-        file_name: 'custom-name.mp4',
+        file_name: 'original.mp4',
         size: 2048,
         mime_type: 'video/mp4',
         date: 1700000000,
       });
     });
 
-    it('falls back to the original file name when no custom file_name is given', async () => {
+    it('adds a DocumentAttributeVideo with the probed duration/width/height when ffprobe succeeds', async () => {
+      mockProbeVideoMetadata.mockResolvedValue({ duration: 12, width: 1920, height: 1080 });
+      mockClient.sendFile.mockResolvedValue(makeMessage({ id: 59 }));
+
+      await uploadVideo('me', { buffer: Buffer.from('video-bytes'), originalFileName: 'original.mp4' });
+
+      expect(mockProbeVideoMetadata).toHaveBeenCalledWith(Buffer.from('video-bytes'));
+      const options = mockClient.sendFile.mock.calls[0][1];
+      expect(options.attributes).toHaveLength(2);
+      expect(options.attributes[1]).toMatchObject({
+        className: 'DocumentAttributeVideo',
+        duration: 12,
+        w: 1920,
+        h: 1080,
+        supportsStreaming: true,
+      });
+    });
+
+    it('omits DocumentAttributeVideo when ffprobe fails/is unavailable', async () => {
+      mockProbeVideoMetadata.mockResolvedValue(null);
+      mockClient.sendFile.mockResolvedValue(makeMessage({ id: 60 }));
+
+      await uploadVideo('me', { buffer: Buffer.from('video-bytes'), originalFileName: 'original.mp4' });
+
+      const options = mockClient.sendFile.mock.calls[0][1];
+      expect(options.attributes).toHaveLength(1);
+    });
+
+    it('uploads without optional thumbnail/caption', async () => {
       mockClient.sendFile.mockResolvedValue(makeMessage({ id: 56 }));
 
       await uploadVideo('me', {
@@ -485,8 +534,11 @@ describe('telegram-client', () => {
         originalFileName: 'original.mp4',
       });
 
+      const uploadFileParams = mockClient.uploadFile.mock.calls[0][0];
+      expect(uploadFileParams.file).toMatchObject({ name: 'original.mp4' });
+
       const options = mockClient.sendFile.mock.calls[0][1];
-      expect(options.file).toMatchObject({ name: 'original.mp4' });
+      expect(options.file).toBe(UPLOADED_FILE_HANDLE);
       expect(options.thumb).toBeUndefined();
       expect(options.caption).toBeUndefined();
     });

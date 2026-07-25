@@ -13,13 +13,13 @@ import { mountRouter } from '@test/helpers/mount-router';
 
 const buildApp = () => mountRouter(videosByRouter);
 
-const item = (message_id: number, file_name: string) => ({
+const item = (message_id: number, file_name: string, description: string | null = null) => ({
   message_id,
   file_name,
   size: 100,
   mime_type: 'video/mp4',
   date: 1700000000,
-  description: null,
+  description,
   duration: 12,
   width: 1920,
   height: 1080,
@@ -50,6 +50,19 @@ describe('GET /videos/by/:chatId', () => {
     mockListVideos.mockResolvedValue({ items: [item(1, 'aula-01.mp4'), item(2, 'aula-02.mp4')], total: 2 });
 
     const res = await request(buildApp()).get('/videos/by/chat1').query({ file_name: 'aula-01' });
+
+    expect(mockListVideos).toHaveBeenCalledWith('chat1', { limit: 100, offset: 0 });
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].message_id).toBe(1);
+  });
+
+  it('fetches the full set and filters/paginates in-memory when description is present', async () => {
+    mockListVideos.mockResolvedValue({
+      items: [item(1, 'aula-01.mp4', '#JavaScript'), item(2, 'aula-02.mp4', '#JS')],
+      total: 2,
+    });
+
+    const res = await request(buildApp()).get('/videos/by/chat1').query({ description: '#javascript' });
 
     expect(mockListVideos).toHaveBeenCalledWith('chat1', { limit: 100, offset: 0 });
     expect(res.body.data).toHaveLength(1);

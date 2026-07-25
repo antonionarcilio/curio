@@ -1,4 +1,4 @@
-import { extractDigits, filterByFileName, filterVideos } from '@/services/videos/filters';
+import { extractDigits, filterByFileName, filterByVideoText, filterVideos } from '@/services/videos/filters';
 import type { VideoListEntry } from '@/telegram-client';
 
 function makeVideo(overrides: Partial<VideoListEntry> = {}): VideoListEntry {
@@ -10,6 +10,7 @@ function makeVideo(overrides: Partial<VideoListEntry> = {}): VideoListEntry {
     size: 100,
     mime_type: 'video/mp4',
     date: 1700000000,
+    description: null,
     ...overrides,
   };
 }
@@ -41,9 +42,19 @@ describe('filterVideos', () => {
     expect(filterVideos(videos, { fileName: 'nada' })).toHaveLength(0);
   });
 
+  it('matches description case/accent-insensitively', () => {
+    const videos = [makeVideo({ description: 'Cena da #JavaScript em ação' }), makeVideo({ description: null })];
+    expect(filterVideos(videos, { description: '#javascript' })).toHaveLength(1);
+    expect(filterVideos(videos, { description: 'java' })).toHaveLength(1);
+    expect(filterVideos(videos, { description: 'acao' })).toHaveLength(1);
+  });
+
   it('requires all provided filters to match (AND semantics)', () => {
-    const videos = [makeVideo({ chat_id: '1', file_name: 'a.mp4' }), makeVideo({ chat_id: '1', file_name: 'b.mp4' })];
-    expect(filterVideos(videos, { chatId: '1', fileName: 'a' })).toHaveLength(1);
+    const videos = [
+      makeVideo({ chat_id: '1', file_name: 'a.mp4', description: '#JavaScript' }),
+      makeVideo({ chat_id: '1', file_name: 'b.mp4', description: '#JavaScript' }),
+    ];
+    expect(filterVideos(videos, { chatId: '1', fileName: 'a', description: '#javascript' })).toHaveLength(1);
   });
 
   it('returns all videos when no filters are given', () => {
@@ -65,5 +76,21 @@ describe('filterByFileName', () => {
 
   it('returns an empty array when nothing matches', () => {
     expect(filterByFileName(items, 'nao existe')).toEqual([]);
+  });
+});
+
+describe('filterByVideoText', () => {
+  const items = [
+    { file_name: 'Aula 01.mp4', description: '#JavaScript primeira parte' },
+    { file_name: 'Aula 02.mp4', description: null },
+  ];
+
+  it('filters by description', () => {
+    expect(filterByVideoText(items, { description: '#javascript' })).toEqual([items[0]]);
+  });
+
+  it('requires file_name and description to match when both are provided', () => {
+    expect(filterByVideoText(items, { fileName: 'aula', description: '#javascript' })).toEqual([items[0]]);
+    expect(filterByVideoText(items, { fileName: '02', description: '#javascript' })).toEqual([]);
   });
 });

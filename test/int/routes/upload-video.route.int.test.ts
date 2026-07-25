@@ -2,8 +2,12 @@ import request from 'supertest';
 
 const mockUploadVideo = jest.fn();
 
+// Limite pequeno só pra tornar o teste de rejeição por tamanho determinístico
+// e barato (o limite real, MAX_UPLOAD_SIZE_BYTES = 2GB, tornaria o teste caro
+// de simular); os outros testes deste arquivo usam buffers bem menores que 20.
 jest.mock('@/telegram-client', () => ({
   uploadVideo: mockUploadVideo,
+  MAX_UPLOAD_SIZE_BYTES: 20,
 }));
 
 import uploadVideoRouter from '@/routes/video/upload/route';
@@ -24,12 +28,11 @@ describe('POST /video/upload/:chatId', () => {
     jest.clearAllMocks();
   });
 
-  it('uploads a video with file_name, description and thumbnail, returning metadata and a signed url', async () => {
+  it('uploads a video with description and thumbnail, returning metadata and a signed url', async () => {
     mockUploadVideo.mockResolvedValue(uploadedVideo);
 
     const res = await request(buildApp())
       .post('/video/upload/me')
-      .field('file_name', 'custom.mp4')
       .field('description', 'uma descrição')
       .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' })
       .attach('thumbnail', Buffer.from('thumb-bytes'), { filename: 'thumb.jpg', contentType: 'image/jpeg' });
@@ -43,7 +46,6 @@ describe('POST /video/upload/:chatId', () => {
     const [chatId, params] = mockUploadVideo.mock.calls[0];
     expect(chatId).toBe('me');
     expect(params.originalFileName).toBe('original.mp4');
-    expect(params.fileName).toBe('custom.mp4');
     expect(params.description).toBe('uma descrição');
     expect(Buffer.isBuffer(params.buffer)).toBe(true);
     expect(Buffer.isBuffer(params.thumbnailBuffer)).toBe(true);
@@ -58,7 +60,6 @@ describe('POST /video/upload/:chatId', () => {
 
     expect(res.status).toBe(200);
     const params = mockUploadVideo.mock.calls[0][1];
-    expect(params.fileName).toBeUndefined();
     expect(params.description).toBeUndefined();
     expect(params.thumbnailBuffer).toBeUndefined();
   });
@@ -78,6 +79,19 @@ describe('POST /video/upload/:chatId', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBeDefined();
+    expect(mockUploadVideo).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when the file exceeds MAX_UPLOAD_SIZE_BYTES', async () => {
+    const res = await request(buildApp())
+      .post('/video/upload/me')
+      .attach('file', Buffer.from('this buffer is over 20 bytes long'), {
+        filename: 'original.mp4',
+        contentType: 'video/mp4',
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/Arquivo maior que o limite/);
     expect(mockUploadVideo).not.toHaveBeenCalled();
   });
 

@@ -1,2 +1,3 @@
-- [ ] Add testes in all routes
 - [ ] Create upload route from the channel or saves message
+- [ ] Organizar estrutura de pastas
+- [ ] migrar para uma lib equivalente a lib `telegram` que possibilite fazer dowwnload de um seed especifico do arquivo (parametro offset).

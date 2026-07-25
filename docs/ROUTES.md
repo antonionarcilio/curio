@@ -167,6 +167,63 @@ buscada (nativamente limitada por `limit`, ver acima).
   (`iterDownload`) nunca são cacheados, sempre buscados ao vivo.
 - **Resposta**: stream binário do vídeo (`200` ou `206`), não JSON.
 
+## `POST /video/:chatId`
+
+- **Propósito**: envia um vídeo novo para `chatId` (aceita `"me"` pra Saved
+  Messages, igual às rotas de leitura). É a única das três rotas de escrita
+  abaixo que permite controlar nome de arquivo e thumbnail — ver a nota
+  "Por que não dá pra renomear/trocar thumbnail de um vídeo existente" mais
+  abaixo pra entender o motivo dessa rota existir separada de `PATCH`.
+- **Acesso**: Privada.
+- **Corpo**: `multipart/form-data`, sem gravação em disco (tudo em memória):
+  - `file` (obrigatório) — o arquivo de vídeo. Só `video/*` é aceito.
+  - `thumbnail` (opcional) — imagem de thumbnail. Sem validação própria de
+    dimensão/tamanho no servidor — o Telegram exige jpg, <20KB, <=320x320px
+    e rejeita o que não bater; o erro dele propaga como `500`.
+  - `file_name` (opcional) — nome customizado do arquivo; se omitido, usa o
+    nome original do arquivo enviado.
+  - `description` (opcional, até 1024 caracteres) — vira a legenda do vídeo.
+- **Cache**: chama `clearAllCaches()` após um envio bem-sucedido, pra que o
+  vídeo novo apareça imediatamente em `/videos`, `/list/:chatId`, etc., sem
+  esperar o TTL expirar.
+- **Resposta**: `{ chat_id, message_id, file_name, size, mime_type, date, url }`
+  — `url` já vem como a mesma URL assinada (`createSignedUrl`) que `/videos`
+  e `/channels/:channelId/videos` geram, pronta pra tocar o vídeo recém
+  enviado sem uma segunda chamada.
+
+## `PATCH /video/:chatId/:messageId`
+
+- **Propósito**: edita a legenda/descrição de um vídeo já enviado.
+- **Acesso**: Privada.
+- **Corpo**: `{ "description": "novo texto" }` (obrigatório, até 1024
+  caracteres — limite de caption do Telegram para contas não-premium).
+- **Cache**: chama `clearAllCaches()` após uma edição bem-sucedida.
+- **Resposta**: `{ "edited": true, "chat_id": ..., "message_id": ... }`.
+- **Erros**: `404` com `{ "error": message }` se a mensagem não existir ou
+  não puder ser editada.
+
+## `DELETE /video/:chatId/:messageId`
+
+- **Propósito**: exclui um vídeo já enviado (`revoke: true` — some pra todos
+  os participantes do chat, não só localmente).
+- **Acesso**: Privada.
+- **Cache**: chama `clearAllCaches()` após uma exclusão bem-sucedida.
+- **Resposta**: `{ "deleted": true, "chat_id": ..., "message_id": ... }`.
+- **Erros**: `404` com `{ "error": message }` se a mensagem não existir.
+
+### Por que não dá pra renomear/trocar thumbnail de um vídeo existente
+
+`client.editMessage` do GramJS só substitui os bytes do arquivo
+(`file`/`forceDocument`) — não aceita `attributes` (nome customizado) nem
+`thumb` (thumbnail), mesmo a função interna que ele usa por baixo dos panos
+aceitando os dois. Não existe hoje nenhuma forma de mudar nome ou thumbnail
+de uma mensagem já existente sem excluir e reenviar (o que perderia o
+`message_id` original e a posição na conversa — rejeitado como opção) ou sem
+depender de funções internas não documentadas do pacote (risco de quebrar em
+atualizações futuras — também rejeitado). Por isso esses dois campos só
+podem ser definidos no momento do `POST /video/:chatId` (upload), nunca via
+`PATCH` de um vídeo já existente.
+
 ## `POST /cache/purge`
 
 - **Propósito**: zera imediatamente todo o cache em memória usado pelas

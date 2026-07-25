@@ -1,5 +1,5 @@
 type: collection.insomnia.rest/5.0
-schema_version: "5.1"
+schema_version: '5.1'
 name: endpoints - dev
 meta:
   id: wrk_da408a30875f4fdfabe964a34e520835
@@ -14,7 +14,7 @@ meta:
 
     Documentação completa e detalhada de cada rota: `docs/ROUTES.md` no repositório.
 collection:
-  - url: "{{ _.BASE_URL }}/routes"
+  - url: '{{ _.BASE_URL }}/routes'
     name: routes
     meta:
       id: req_39f181eba45146418b03badfd77f9ee7
@@ -39,7 +39,7 @@ collection:
         send: true
         store: true
       rebuildPath: true
-  - url: "{{ _.BASE_URL }}/channels"
+  - url: '{{ _.BASE_URL }}/channels'
     name: channels
     meta:
       id: req_662d7a0f0cac4f608d87c7afb24e7736
@@ -64,24 +64,24 @@ collection:
     method: GET
     parameters:
       - name: limit
-        value: "10"
-        description: "máximo de diálogos escaneados no total (default 100). Não é só canais — conta todos os diálogos (canais + grupos + conversas)."
+        value: '10'
+        description: 'máximo de diálogos escaneados no total (default 100). Não é só canais — conta todos os diálogos (canais + grupos + conversas).'
         disabled: true
       - name: per_page
-        value: "5"
-        description: "itens por página (até 100). Ativa modo paginado (envelope com data, page, per_page, total, total_pages)."
+        value: '5'
+        description: 'itens por página (até 100). Ativa modo paginado (envelope com data, page, per_page, total, total_pages).'
         disabled: true
       - name: page
-        value: "2"
-        description: "número da página (default 1). Só funciona se per_page ou page forem informados."
+        value: '2'
+        description: 'número da página (default 1). Só funciona se per_page ou page forem informados.'
         disabled: true
       - name: channel_id
-        value: "1002283515431"
-        description: "filtra por ID exato do canal (compara só dígitos, -100... e 100... casam igual)."
+        value: '1002283515431'
+        description: 'filtra por ID exato do canal (compara só dígitos, -100... e 100... casam igual).'
         disabled: true
       - name: channel_title
         value: dev
-        description: "filtra por título contendo o termo (case-insensitive, sem diferenciar acentos)."
+        description: 'filtra por título contendo o termo (case-insensitive, sem diferenciar acentos).'
         disabled: true
     settings:
       renderRequestBody: true
@@ -91,7 +91,7 @@ collection:
         send: true
         store: true
       rebuildPath: true
-  - url: "{{ _.BASE_URL }}/videos"
+  - url: '{{ _.BASE_URL }}/videos'
     name: videos
     meta:
       id: req_928ee1ac5380470982b7b2811180626c
@@ -115,28 +115,28 @@ collection:
     method: GET
     parameters:
       - name: limit
-        value: "10"
-        description: "máximo de vídeos por chat (default 100). Passado direto pro filtro nativo do Telegram (InputMessagesFilterVideo)."
+        value: '10'
+        description: 'máximo de vídeos por chat (default 100). Passado direto pro filtro nativo do Telegram (InputMessagesFilterVideo).'
         disabled: true
       - name: per_page
-        value: "2"
-        description: "itens por página (até 100). Ativa modo paginado (envelope com data, page, per_page, total, total_pages). Corte em memória, não nativo."
+        value: '2'
+        description: 'itens por página (até 100). Ativa modo paginado (envelope com data, page, per_page, total, total_pages). Corte em memória, não nativo.'
         disabled: true
       - name: page
-        value: "5"
-        description: "número da página (default 1). Só funciona se per_page ou page forem informados."
+        value: '5'
+        description: 'número da página (default 1). Só funciona se per_page ou page forem informados.'
         disabled: true
       - name: file_name
         value: js
-        description: "filtra por file_name contendo o termo (case-insensitive, sem diferenciar acentos)."
+        description: 'filtra por file_name contendo o termo (case-insensitive, sem diferenciar acentos).'
         disabled: true
       - name: chat_id
-        value: ""
-        description: "filtra por correspondência exata do ID do chat."
+        value: ''
+        description: 'filtra por correspondência exata do ID do chat.'
         disabled: true
       - name: chat_title
         value: course
-        description: "filtra por chat_title contendo o termo (case-insensitive, sem diferenciar acentos)."
+        description: 'filtra por chat_title contendo o termo (case-insensitive, sem diferenciar acentos).'
         disabled: true
     settings:
       renderRequestBody: true
@@ -146,7 +146,7 @@ collection:
         send: true
         store: true
       rebuildPath: true
-  - url: "{{ _.BASE_URL }}/channels/1004325653681/videos"
+  - url: '{{ _.BASE_URL }}/channels/1004325653681/videos'
     name: videos by channel
     meta:
       id: req_5cb1eba140344f5eb296a3542ea8cb5a
@@ -170,20 +170,20 @@ collection:
     method: GET
     parameters:
       - name: limit
-        value: ""
-        description: "máximo de vídeos a buscar (default 100)"
+        value: ''
+        description: 'máximo de vídeos a buscar (default 100)'
         disabled: true
       - name: per_page
-        value: ""
-        description: "itens por página (até 100). Se omitido, herda o valor de limit quando page é informado."
+        value: ''
+        description: 'itens por página (até 100). Se omitido, herda o valor de limit quando page é informado.'
         disabled: true
       - name: page
-        value: ""
-        description: "número da página (default 1). Paginação nativa via offsetId/addOffset do Telegram, exceto quando file_name é usado (aí vira em memória)."
+        value: ''
+        description: 'número da página (default 1). Paginação nativa via offsetId/addOffset do Telegram, exceto quando file_name é usado (aí vira em memória).'
         disabled: true
       - name: file_name
-        value: ""
-        description: "filtra por file_name contendo o termo (case-insensitive, sem acentos). Força paginação em memória em vez de nativa."
+        value: ''
+        description: 'filtra por file_name contendo o termo (case-insensitive, sem acentos). Força paginação em memória em vez de nativa.'
         disabled: true
     settings:
       renderRequestBody: true
@@ -193,7 +193,7 @@ collection:
         send: true
         store: true
       rebuildPath: true
-  - url: "{{ _.BASE_URL }}/cache/purge"
+  - url: '{{ _.BASE_URL }}/cache/purge'
     name: purge cache
     meta:
       id: req_aa49298d41af477fa834810a393a12b5
@@ -218,7 +218,7 @@ collection:
         send: true
         store: true
       rebuildPath: true
-  - url: "{{ _.BASE_URL }}/video/-1004325653681/6"
+  - url: '{{ _.BASE_URL }}/video/-1004325653681/6'
     name: video
     meta:
       id: req_85ea8a5fd70d4699b3acce2dc274a9dd
@@ -241,12 +241,12 @@ collection:
     method: GET
     parameters:
       - name: exp
-        value: "1784936362"
-        description: "timestamp Unix de expiração (obrigatório via signed URL)"
+        value: '1784936362'
+        description: 'timestamp Unix de expiração (obrigatório via signed URL)'
         disabled: true
       - name: sig
         value: 0b7ac75b6d343e5bd4c45d0f51fbd5e41282326caed97042a37f47b3920b979f
-        description: "HMAC-SHA256 de chatId:messageId:exp (ver src/signedUrl.js)"
+        description: 'HMAC-SHA256 de chatId:messageId:exp (ver src/signedUrl.js)'
         disabled: true
     settings:
       renderRequestBody: true
@@ -256,7 +256,7 @@ collection:
         send: true
         store: true
       rebuildPath: true
-  - url: "{{ _.BASE_URL }}/list/1004325653681"
+  - url: '{{ _.BASE_URL }}/list/1004325653681'
     name: list videos by chat id
     meta:
       id: req_45e29a7259a04c96bcb3d1ef330d5bd6
@@ -277,17 +277,126 @@ collection:
     method: GET
     parameters:
       - name: limit
-        value: "100"
-        description: "máximo de vídeos a buscar (default 100)"
+        value: '100'
+        description: 'máximo de vídeos a buscar (default 100)'
         disabled: true
       - name: page
-        value: "1"
-        description: "número da página (default 1). Paginação nativa igual /channels/:channelId/videos."
+        value: '1'
+        description: 'número da página (default 1). Paginação nativa igual /channels/:channelId/videos.'
         disabled: true
       - name: per_page
-        value: "10"
-        description: "itens por página (máx 100)"
+        value: '10'
+        description: 'itens por página (máx 100)'
         disabled: true
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: '{{ _.BASE_URL }}/video/me'
+    name: upload video
+    meta:
+      id: req_7a3f9c2e1b8d4a6f9e0c3d5a7b1f2e4d
+      created: 1784934100000
+      modified: 1784934100000
+      isPrivate: false
+      description: |-
+        **Propósito**: envia um vídeo novo para `chatId` (aceita `me` pra Saved Messages). É a única rota que permite controlar nome de arquivo e thumbnail — `PATCH` de um vídeo já existente só permite editar a descrição (ver `docs/ROUTES.md` pra o motivo).
+
+        **Acesso**: Privada.
+
+        **Corpo**: `multipart/form-data`, sem gravação em disco:
+        - `file` (obrigatório) — o arquivo de vídeo (só `video/*`).
+        - `thumbnail` (opcional) — imagem de thumbnail (o Telegram exige jpg, <20KB, <=320x320px; erro dele propaga como 500).
+        - `file_name` (opcional) — nome customizado; se omitido, usa o nome original do arquivo.
+        - `description` (opcional, até 1024 caracteres) — vira a legenda do vídeo.
+
+        **Cache**: chama `clearAllCaches()` após um envio bem-sucedido.
+
+        **Resposta**: `{ chat_id, message_id, file_name, size, mime_type, date, url }` — `url` já vem assinada, pronta pra tocar o vídeo enviado.
+      sortKey: -1784934100000
+    method: POST
+    body:
+      mimeType: multipart/form-data
+      params:
+        - name: file
+          type: file
+          fileName: ''
+        - name: thumbnail
+          type: file
+          fileName: ''
+          disabled: true
+        - name: file_name
+          value: ''
+          disabled: true
+        - name: description
+          value: ''
+          disabled: true
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: '{{ _.BASE_URL }}/video/-1004325653681/6'
+    name: edit video description
+    meta:
+      id: req_2b6e8f1a4c9d3e7b0a5f8c2d6e1b9a4c
+      created: 1784934200000
+      modified: 1784934200000
+      isPrivate: false
+      description: |-
+        **Propósito**: edita a legenda/descrição de um vídeo já enviado.
+
+        **Acesso**: Privada.
+
+        **Corpo**: `{ "description": "novo texto" }` (obrigatório, até 1024 caracteres).
+
+        **Cache**: chama `clearAllCaches()` após uma edição bem-sucedida.
+
+        **Resposta**: `{ "edited": true, "chat_id": ..., "message_id": ... }`.
+
+        **Erros**: `404` com `{ "error": message }` se a mensagem não existir ou não puder ser editada.
+      sortKey: -1784934200000
+    method: PATCH
+    body:
+      mimeType: application/json
+      text: |-
+        {
+          "description": "nova descrição"
+        }
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: '{{ _.BASE_URL }}/video/-1004325653681/6'
+    name: delete video
+    meta:
+      id: req_9d4a1e6b3f8c2a5d7e0b9f4c1a6d3e8b
+      created: 1784934300000
+      modified: 1784934300000
+      isPrivate: false
+      description: |-
+        **Propósito**: exclui um vídeo já enviado (`revoke: true` — some pra todos os participantes do chat, não só localmente).
+
+        **Acesso**: Privada.
+
+        **Cache**: chama `clearAllCaches()` após uma exclusão bem-sucedida.
+
+        **Resposta**: `{ "deleted": true, "chat_id": ..., "message_id": ... }`.
+
+        **Erros**: `404` com `{ "error": message }` se a mensagem não existir.
+      sortKey: -1784934300000
+    method: DELETE
     settings:
       renderRequestBody: true
       encodeUrl: true

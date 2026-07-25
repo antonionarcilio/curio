@@ -73,9 +73,11 @@ explicitamente que está em dev.
 
 O servidor expõe: `/routes` (autodescoberta), `/videos` (todos os vídeos
 acessíveis, com URL pronta), `/channels` (seus canais), `/channels/:channelId/videos`,
-`/list/:chatId` (descoberta por chat), e `/video/:chatId/:messageId` (streaming
-de fato). Referência completa — propósito, query params aceitos e se cada
-rota é pública ou privada — em **[`docs/ROUTES.md`](docs/ROUTES.md)**.
+`/list/:chatId` (descoberta por chat), `/video/:chatId/:messageId` (streaming
+de fato, `GET`; editar descrição, `PATCH`; excluir, `DELETE`), e
+`POST /video/:chatId` (upload de vídeo novo). Referência completa — propósito,
+query params aceitos e se cada rota é pública ou privada — em
+**[`docs/ROUTES.md`](docs/ROUTES.md)**.
 
 A forma mais prática de usar o servidor: chame `/videos`, escolha o vídeo na
 lista, e abra o campo `url` retornado direto no VLC/navegador — já vem

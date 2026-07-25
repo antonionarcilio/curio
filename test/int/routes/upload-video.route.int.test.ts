@@ -10,6 +10,7 @@ jest.mock('@/telegram-client', () => ({
   MAX_UPLOAD_SIZE_BYTES: 20,
 }));
 
+import { getJob } from '@/jobs/upload-progress-store';
 import uploadVideoRouter from '@/routes/video/upload/route';
 import { mountRouter } from '@test/helpers/mount-router';
 
@@ -23,12 +24,23 @@ const uploadedVideo = {
   date: 1700000000,
 };
 
+// uploadVideo roda em background, fora do ciclo request/response — dá um
+// respiro pro event loop processar o .then/.catch encadeado na rota antes de
+// inspecionar o estado do job.
+async function waitForJobSettled(jobId: string): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const job = getJob(jobId);
+    if (job && job.status !== 'queued' && job.status !== 'uploading') return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
 describe('POST /video/upload/:chatId', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('uploads a video with description and thumbnail, returning metadata and a signed url', async () => {
+  it('accepts the upload and returns a queued job id immediately', async () => {
     mockUploadVideo.mockResolvedValue(uploadedVideo);
 
     const res = await request(buildApp())
@@ -37,11 +49,11 @@ describe('POST /video/upload/:chatId', () => {
       .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' })
       .attach('thumbnail', Buffer.from('thumb-bytes'), { filename: 'thumb.jpg', contentType: 'image/jpeg' });
 
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject(uploadedVideo);
-    expect(res.body.chat_id).toBe('me');
-    expect(res.body.url).toMatch(/^http:\/\/.+\/api\/v1\/video\/stream\/me\/42\?exp=\d+&sig=[0-9a-f]+$/);
+    expect(res.status).toBe(202);
+    expect(res.body.status).toBe('queued');
+    expect(typeof res.body.job_id).toBe('string');
 
+    await waitForJobSettled(res.body.job_id);
     expect(mockUploadVideo).toHaveBeenCalledTimes(1);
     const [chatId, params] = mockUploadVideo.mock.calls[0];
     expect(chatId).toBe('me');
@@ -49,6 +61,25 @@ describe('POST /video/upload/:chatId', () => {
     expect(params.description).toBe('uma descrição');
     expect(Buffer.isBuffer(params.buffer)).toBe(true);
     expect(Buffer.isBuffer(params.thumbnailBuffer)).toBe(true);
+    expect(typeof params.onProgress).toBe('function');
+
+    params.onProgress(0.5);
+    expect(getJob(res.body.job_id)?.progress).toBe(0.5);
+  });
+
+  it('completes the job with the uploaded video metadata and a signed url', async () => {
+    mockUploadVideo.mockResolvedValue(uploadedVideo);
+
+    const res = await request(buildApp())
+      .post('/video/upload/me')
+      .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' });
+
+    await waitForJobSettled(res.body.job_id);
+    const job = getJob(res.body.job_id);
+    expect(job?.status).toBe('completed');
+    expect(job?.progress).toBe(1);
+    expect(job?.result).toMatchObject(uploadedVideo);
+    expect(job?.result?.url).toMatch(/^http:\/\/.+\/api\/v1\/video\/stream\/me\/42\?exp=\d+&sig=[0-9a-f]+$/);
   });
 
   it('uploads a video with only the required file field', async () => {
@@ -58,7 +89,8 @@ describe('POST /video/upload/:chatId', () => {
       .post('/video/upload/me')
       .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(202);
+    await waitForJobSettled(res.body.job_id);
     const params = mockUploadVideo.mock.calls[0][1];
     expect(params.description).toBeUndefined();
     expect(params.thumbnailBuffer).toBeUndefined();
@@ -95,14 +127,39 @@ describe('POST /video/upload/:chatId', () => {
     expect(mockUploadVideo).not.toHaveBeenCalled();
   });
 
-  it('returns 500 with the error message when uploadVideo rejects', async () => {
+  it('marks the job as failed when uploadVideo rejects', async () => {
     mockUploadVideo.mockRejectedValue(new Error('boom'));
 
     const res = await request(buildApp())
       .post('/video/upload/me')
       .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' });
 
-    expect(res.status).toBe(500);
-    expect(res.body).toEqual({ error: 'boom' });
+    expect(res.status).toBe(202);
+    await waitForJobSettled(res.body.job_id);
+    const job = getJob(res.body.job_id);
+    expect(job?.status).toBe('error');
+    expect(job?.error).toBe('boom');
+  });
+
+  it('keeps a second concurrent upload queued until the first settles (UPLOAD_CONCURRENCY_LIMIT default 1)', async () => {
+    let resolveFirst!: (value: typeof uploadedVideo) => void;
+    mockUploadVideo.mockImplementationOnce(() => new Promise((resolve) => (resolveFirst = resolve)));
+    mockUploadVideo.mockResolvedValueOnce(uploadedVideo);
+
+    const app = buildApp();
+    const firstRes = await request(app)
+      .post('/video/upload/me')
+      .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' });
+    const secondRes = await request(app)
+      .post('/video/upload/me')
+      .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(getJob(firstRes.body.job_id)?.status).toBe('uploading');
+    expect(getJob(secondRes.body.job_id)?.status).toBe('queued');
+
+    resolveFirst(uploadedVideo);
+    await waitForJobSettled(secondRes.body.job_id);
+    expect(getJob(secondRes.body.job_id)?.status).toBe('completed');
   });
 });

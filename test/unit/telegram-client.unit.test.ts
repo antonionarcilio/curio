@@ -498,6 +498,20 @@ describe('telegram-client', () => {
       });
     });
 
+    it('passes onProgress through to tg.uploadFile', async () => {
+      mockClient.sendFile.mockResolvedValue(makeMessage({ id: 60 }));
+      const onProgress = jest.fn();
+
+      await uploadVideo('me', {
+        buffer: Buffer.from('video-bytes'),
+        originalFileName: 'original.mp4',
+        onProgress,
+      });
+
+      const uploadFileParams = mockClient.uploadFile.mock.calls[0][0];
+      expect(uploadFileParams.onProgress).toBe(onProgress);
+    });
+
     it('adds a DocumentAttributeVideo with the probed duration/width/height when ffprobe succeeds', async () => {
       mockProbeVideoMetadata.mockResolvedValue({ duration: 12, width: 1920, height: 1080 });
       mockClient.sendFile.mockResolvedValue(makeMessage({ id: 59 }));

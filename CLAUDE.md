@@ -40,16 +40,18 @@ There is no separate build-step-only command beyond this: `npx pnpm start` runs 
 npx pnpm lint           # run ESLint
 npx pnpm format          # format the codebase with Prettier
 npx pnpm format:check   # check formatting without writing
-npx pnpm typecheck      # tsc --noEmit against src/, then again against src/+scripts/ via tsconfig.scripts.json
+npx pnpm typecheck      # tsc --noEmit against src/, then again against src/+test/ via tsconfig.jest.json
 ```
 
 ### Testing
 
 ```bash
-npx pnpm test           # run the Jest test suite once
-npx pnpm test:watch     # Jest in watch mode
-npx pnpm test:coverage  # Jest with coverage report
-npx pnpm smoke-test     # manual, opt-in: hits the real Telegram API (see "Smoke test manual" below)
+npx pnpm test           # run unit + int (everything except e2e) once
+npx pnpm test:unit      # only test/unit — pure/near-pure logic, no HTTP
+npx pnpm test:int       # only test/int — supertest + Express, telegram-client mocked
+npx pnpm test:e2e       # manual, opt-in: hits the real Telegram API (see "e2e tests" below)
+npx pnpm test:watch     # Jest in watch mode (unit + int)
+npx pnpm test:coverage  # Jest with coverage report (unit + int)
 ```
 
 ### Coverage
@@ -66,24 +68,44 @@ This applies to all code under `src/` — test files themselves, configuration, 
 
 TDD is the standard practice for this project: for any new feature or bugfix, write a failing test first (a unit test for pure/near-pure logic, or a supertest HTTP test for route/middleware behavior with `telegram-client.ts` mocked), watch it fail, implement the minimal change to make it pass, then refactor with the test green. There is no CI enforcement of this yet — it's a project convention backed by the pre-commit hook (see "Git hooks" below), not an automated gate beyond the local commit.
 
-Tests live under `test/`, mirroring `src/`'s structure (`test/signed-url.test.ts` ↔ `src/signed-url.ts`, `test/routes/stream-video.route.test.ts` ↔ `src/routes/stream-video.route.ts`, `test/cache/ttl-cache.test.ts` ↔ `src/cache/ttl-cache.ts`, etc.). `test/setup-env.ts` runs automatically before every test file (via `jest.config.js`'s `setupFiles`) and sets fake `TELEGRAM_API_ID`/`TELEGRAM_API_HASH`/`ACCESS_TOKEN`/etc. so `src/config.ts` never throws and no real `.env` is required or touched during tests. Tests run under `ts-jest` against `tsconfig.jest.json` — a copy of `tsconfig.json` with `rootDir`/`include` widened to also cover `test/`, kept separate from the main `tsconfig.json` so `npx pnpm build`/`npx pnpm typecheck` (which target `src/` only) are unaffected.
+### Three layers: unit / int / e2e
 
-**GramJS is always mocked, never real** — no test ever calls real Telegram/MTProto:
-- Tests of `src/telegram-client.ts` itself mock the low-level `telegram` package (`jest.mock('telegram')`, `jest.mock('telegram/sessions')`), stubbing `TelegramClient`'s methods (`connect`, `getMessages`, `getDialogs`, `getEntity`, `iterDownload`) and `Api.InputMessagesFilterVideo` directly.
-- Tests of `src/routes/*.ts` and `src/server.ts` mock the higher-level `src/telegram-client.ts` module instead (`jest.mock('../../src/telegram-client')`), stubbing its exported functions (`getVideoMessage`, `listVideos`, `listAllVideos`, `listChannels`, `getChannelVideos`) and `client.iterDownload` (returned as a fake async iterable yielding `Buffer` chunks) — these tests never reach into GramJS internals.
-- `client.iterDownload`'s `offset`/`limit` arguments must always be `big-integer` instances, never native `BigInt` (see "Key implementation details" below); `test/routes/stream-video.route.test.ts` asserts this explicitly to guard against silent regressions.
+Tests live under `test/`, split into three subdirectories by what they actually exercise, mirroring `src/`'s structure inside each one (`test/unit/signed-url.unit.test.ts` ↔ `src/signed-url.ts`, `test/int/routes/stream-video.route.int.test.ts` ↔ `src/routes/stream-video.route.ts`, `test/unit/cache/ttl-cache.unit.test.ts` ↔ `src/cache/ttl-cache.ts`, etc.). The filename itself carries the layer as a suffix — `<name>.unit.test.ts`, `<name>.int.test.ts`, `<name>.e2e.test.ts` — which is what `jest.config.js`'s `testMatch` uses to tell them apart, not just the directory:
 
-**Caching between tests**: `src/cache/ttl-cache.ts` keeps its cache registry at module scope, so `test/telegram-client.test.ts` calls `clearAllCaches()` in `beforeEach` to stop one test's mocked `getMessages`/`getDialogs`/etc. call count from leaking into the next (Jest gives each *test file* a fresh module registry automatically, so this only matters within a single file, not across files).
+- **`test/unit/`** — a module tested in isolation, no HTTP involved (pure functions, or `telegram-client.ts` itself with the low-level `telegram` package mocked).
+- **`test/int/`** — `supertest` driving a real Express app (real router, real middleware) with `src/telegram-client.ts` mocked at the module boundary. Proves the wiring — query parsing, status codes, header handling, JSON shapes — without touching Telegram.
+- **`test/e2e/`** — the real Telegram API, nothing mocked. See "e2e tests (API real)" below.
 
-`src/server.ts` exports `buildApp()` (a synchronous Express app factory with no I/O) alongside `startServer()` (the real `ensureConnected()` + `app.listen()` path used by `npx pnpm start`) precisely so tests can `request(buildApp())` with `supertest` without connecting to Telegram or binding a real port. `startServer()`/`main` only runs when `server.ts` is executed directly (`require.main === module` guard), never merely on import — this is also why `test/server.test.ts` can `jest.resetModules()` + re-`require('../src/server')` inside an isolated `describe` block to exercise the dev auto-fill behavior (`config.isDev` is computed once per module load, from `process.env.NODE_ENV` at that moment) without affecting other tests in the file.
+`npx pnpm test` runs `test/unit/` + `test/int/` only (`jest.config.js`'s `testMatch` only matches `.unit.test.ts`/`.int.test.ts`, and `testPathIgnorePatterns` excludes `test/e2e/` as a second guard) — this is what the pre-commit hook runs, so a commit never depends on network or real credentials. `npx pnpm test:unit`/`test:int` run one layer at a time (`jest test/unit`, a plain path filter). `npx pnpm test:e2e` is separate — see below.
+
+`test/setup-env.ts` runs automatically before every `unit`/`int` test file (via `jest.config.js`'s `setupFiles`) and sets fake `TELEGRAM_API_ID`/`TELEGRAM_API_HASH`/`ACCESS_TOKEN`/etc. so `src/config.ts` never throws and no real `.env` is required or touched — **`test/e2e/` deliberately does not load this file** (see below). Tests run under `ts-jest` against `tsconfig.jest.json` — a copy of `tsconfig.json` with `rootDir`/`include` widened to also cover `test/`, kept separate from the main `tsconfig.json` so `npx pnpm build` (which targets `src/` only) is unaffected; `npx pnpm typecheck` runs both, so `test/` — including `test/e2e/` — is type-checked too.
+
+**`test/helpers/mount-router.ts`** exports `mountRouter(router, { json? })`, the standard way every `test/int/routes/*.int.test.ts` file builds its Express app (`const buildApp = () => mountRouter(someRouter)`, or `{ json: true }` for routes that read a JSON body) — don't hand-roll a local `express()` + `app.use(...)` per file.
+
+**GramJS is always mocked in `unit`/`int`, never real** — no test outside `test/e2e/` ever calls real Telegram/MTProto:
+- `test/unit/telegram-client.unit.test.ts` mocks the low-level `telegram` package (`jest.mock('telegram')`, `jest.mock('telegram/sessions')`), stubbing `TelegramClient`'s methods (`connect`, `getMessages`, `getDialogs`, `getEntity`, `iterDownload`) and `Api.InputMessagesFilterVideo` directly.
+- Tests of `src/routes/*.ts` and `src/server.ts` mock the higher-level `src/telegram-client.ts` module instead (`jest.mock('@/telegram-client')`), stubbing its exported functions (`getVideoMessage`, `listVideos`, `listAllVideos`, `listChannels`, `getChannelVideos`) and `client.iterDownload` (returned as a fake async iterable yielding `Buffer` chunks) — these tests never reach into GramJS internals.
+- `client.iterDownload`'s `offset`/`limit` arguments must always be `big-integer` instances, never native `BigInt` (see "Key implementation details" below); `test/int/routes/stream-video.route.int.test.ts` asserts this explicitly to guard against silent regressions.
+
+**Caching between tests**: `src/cache/ttl-cache.ts` keeps its cache registry at module scope, so `test/unit/telegram-client.unit.test.ts` calls `clearAllCaches()` in `beforeEach` to stop one test's mocked `getMessages`/`getDialogs`/etc. call count from leaking into the next (Jest gives each *test file* a fresh module registry automatically, so this only matters within a single file, not across files).
+
+`src/server.ts` exports `buildApp()` (a synchronous Express app factory with no I/O) alongside `startServer()` (the real `ensureConnected()` + `app.listen()` path used by `npx pnpm start`) precisely so tests can `request(buildApp())` with `supertest` without connecting to Telegram or binding a real port. `startServer()`/`main` only runs when `server.ts` is executed directly (`require.main === module` guard), never merely on import — this is also why `test/int/server.int.test.ts` can `jest.resetModules()` + re-`require('@/server')` inside an isolated `describe` block to exercise the dev auto-fill behavior (`config.isDev` is computed once per module load, from `process.env.NODE_ENV` at that moment) without affecting other tests in the file. The pure-function describes for `src/server.ts` (`timingSafeEqualStrings`, `extractBearerToken`, `verifySignedStream`) live separately in `test/unit/server.unit.test.ts`, since they don't need `telegram-client` mocked or an HTTP round trip.
 
 `src/login.ts` (interactive CLI login script) is intentionally left without tests — it's a one-off manual script (prompts for phone/2FA/code, calls `process.exit`), not meaningfully unit-testable without a real Telegram account.
 
-### Smoke test manual (API real)
+### e2e tests (API real)
 
-The mocked Jest suite protects business logic but cannot catch **contract drift**: if the `telegram` package changes its API shape in a future version, every mock still "passes" while the app breaks against the real API. `npx pnpm smoke-test` (`scripts/smoke-test.ts`) exists to catch that — it is **opt-in and manual only**, never wired into `pnpm test`, the pre-commit hook, or any CI-equivalent, because it connects to the real account configured in `.env` and depends on live network/Telegram infrastructure. Run it by hand after upgrading the `telegram` dependency, or periodically as a sanity check.
+The mocked `unit`/`int` layers protect business logic but cannot catch **contract drift**: if the `telegram` package changes its API shape in a future version, every mock still "passes" while the app breaks against the real API. `test/e2e/` exists to catch that — it is **opt-in and manual only** (`npx pnpm test:e2e`), never wired into `pnpm test`, the pre-commit hook, or any CI-equivalent, because it connects to the real account configured in `.env` and depends on live network/Telegram infrastructure. Run it by hand after upgrading the `telegram` dependency, or periodically as a sanity check.
 
-It performs a real, end-to-end round trip against "Saved Messages" (`me`): calls `listChannels` to check the dialog shape, uploads `src/_assets/file_example_MP4_1920_18MG.mp4` (~17MB, under the 20MB cap) via `client.sendFile`, then runs `listVideos`/`getVideoMessage`/`client.iterDownload` against that real message to exercise the same path the streaming route uses in production (including the `big-integer` offset/limit regression guard). **The uploaded message is always deleted at the end, in a `finally` block, even if an earlier step throws** — so a run never leaves residue in the user's real Saved Messages. `scripts/` is outside `tsconfig.json`'s `include` (which stays scoped to `src/` on purpose, for `pnpm build`); it's type-checked separately via `tsconfig.scripts.json`, which `npx pnpm typecheck` also runs.
+It runs under a **separate Jest config**, `jest.e2e.config.js` (`testMatch: ['**/test/e2e/**/*.e2e.test.ts']`), for two reasons that make it unsafe to share `jest.config.js`: it deliberately has **no `setupFiles`** — loading `test/setup-env.ts`'s fake credentials would make the tests authenticate against a nonexistent account instead of the real one in `.env` — and it forces `maxWorkers: 1`, because the tests share one real Telegram account and running them in parallel triggers `FLOOD_WAIT`.
+
+**One file per capability**, each independent and runnable on its own (`npx pnpm test:e2e -- list-videos`): `list-channels.e2e.test.ts`, `upload-video.e2e.test.ts`, `list-videos.e2e.test.ts`, `channel-videos.e2e.test.ts`, `stream-video.e2e.test.ts`, `edit-video.e2e.test.ts`, `delete-video.e2e.test.ts`. Each uses `describe.each` from `test/e2e/helpers/video-fixture.ts`'s `TARGETS` (`"me"`/Saved Messages, and `SMOKE_TEST_CHANNEL_ID`, see "Configuration" below) to run against both — real channel coverage is what caught the entity-resolution bug that only manifested against a channel, never against `"me"`.
+
+`test/e2e/helpers/video-fixture.ts` centralizes `uploadFixture(chatId)`/`removeFixture(chatId, messageId)` (thin wrappers over the real `uploadVideo`/`deleteVideoMessage` from `@/telegram-client`) and the shared constants (`TEST_VIDEO_PATH`, `TARGETS`, description strings). Most files upload a fixture in `beforeAll` and delete it in `afterAll`; `upload-video.e2e.test.ts` and `delete-video.e2e.test.ts` upload/delete inside the `it` itself, since that operation *is* the thing under test.
+
+**Each file must call `client.disconnect()` in a file-level `afterAll`** (registered once, outside any `describe.each`, so it runs after all targets in that file — not per target, which would leave the shared `TelegramClient` singleton's `connected` flag stuck `true` after an early disconnect and break the next target's `ensureConnected()`). Skipping this leaves the GramJS socket open and the Jest process hangs after the last test.
+
+A full `test:e2e` run does ~11 real uploads of the ~17MB fixture (~20s each against `"me"`, ~65s against a channel — measured) — roughly 8 minutes. That cost is why it's manual-only and why each file uploads its own fixture rather than sharing one: isolation over speed, since this only runs by hand.
 
 ## Configuration
 
@@ -96,6 +118,7 @@ Copy `.env.example` to `.env` and set:
 - `NODE_ENV` — must be exactly `development` to enable the dev auto-fill behavior described below; any other value (including unset) is treated as strict/production
 - `CACHE_TTL_MS` — how long (ms) read results from `telegram-client.ts` stay cached in memory (default `180000`, 3 min). See "Caching and fetch concurrency" below.
 - `TELEGRAM_FETCH_CONCURRENCY` — max chats fetched in parallel by `listAllVideos` (default `5`). Higher values speed up `/videos` but raise the risk of hitting Telegram's `FLOOD_WAIT`.
+- `SMOKE_TEST_CHANNEL_ID` — channel `npx pnpm test:e2e` uses to also round-trip list/upload/edit/delete against a real channel, not just Saved Messages (default `-1004325653681`). Must keep the `-100` prefix — GramJS reads a plain positive ID as a user (`PeerUser`), not a channel, and entity resolution fails. Only read by `test/e2e/helpers/video-fixture.ts`, never by the server itself — swap it to any channel the logged-in account can post/delete in.
 
 `src/config.js` centralizes env parsing and throws immediately if `TELEGRAM_API_ID`/`TELEGRAM_API_HASH` are missing.
 
@@ -195,6 +218,10 @@ Files whose purpose is to document something (e.g. `docs/ROUTES.md`) use `SNAKE_
 
 All directories in this project use `kebab-case`, lowercase — no `PascalCase`, `camelCase`, or `snake_case` (e.g. `src`, `src/routes`, `src/types`, `docs`). This applies to any new folder added under `src/` or elsewhere in the repo. This is about folder names only — file naming has its own conventions above (`JSON field naming convention`, `Doc file naming convention`).
 
+### Import paths (absolute)
+
+Imports that cross out of the current directory use an absolute alias — `@/*` for `src/*`, `@test/*` for `test/*` — never `../..`. Imports within the same directory stay relative (`./http-utils`). The aliases are declared in four places that must stay in sync: `tsconfig.json` (`paths`), `tsconfig.jest.json` (redeclares both entries — `paths` replaces rather than merges when extending a base config), and `jest.config.js`/`jest.e2e.config.js` (`moduleNameMapper`, because ts-jest doesn't read `paths` on its own). The build is `tsc && tsc-alias`: `tsc` alone type-checks `@/*` correctly but never rewrites it in the emitted JS, and `npx pnpm start` runs `dist/server.js` directly — without `tsc-alias`, the compiled output would `require("@/config")` and fail at runtime with no compile-time warning.
+
 ## Coding Patterns and Best Practices
 
 - Functions: 4-20 lines. Split if longer.
@@ -225,7 +252,7 @@ Husky manages a `pre-commit` hook (`.husky/pre-commit`) that runs, in order:
 
 1. `npx pnpm lint-staged` — lints and formats staged files.
 2. `npx pnpm typecheck` — full-project type check.
-3. `npx pnpm test` — full Jest suite (see "Testing" above).
+3. `npx pnpm test` — unit + int suite (see "Testing" above). Never `test:e2e` — that layer hits the real Telegram API and stays opt-in/manual, never gated on a commit.
 
 All three must pass for the commit to go through.
 

@@ -1,7 +1,7 @@
+import { createSignedUrl } from '@/signed-url';
+import { listAllVideos } from '@/telegram-client';
 import express, { type Request, type Response } from 'express';
 import { z } from 'zod';
-import { createSignedUrl } from '../signed-url';
-import { listAllVideos } from '../telegram-client';
 import { isPaginationRequested, paginate, paginationQuerySchema, resolvePagination } from './pagination';
 import { filterVideos } from './video-filters';
 

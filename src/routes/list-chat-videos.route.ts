@@ -1,7 +1,8 @@
+import { listVideos } from '@/telegram-client';
 import express, { type Request, type Response } from 'express';
 import { z } from 'zod';
-import { listVideos } from '../telegram-client';
 import { buildPageEnvelope, isPaginationRequested, paginationQuerySchema, resolvePagination } from './pagination';
+import { pickBaseVideoFields } from './video-fields';
 
 const router = express.Router();
 
@@ -21,7 +22,7 @@ router.get('/list/:chatId', async (req: Request, res: Response) => {
 
     if (!isPaginationRequested(paginationQuery)) {
       const { items } = await listVideos(req.params.chatId, { limit, offset: 0 });
-      res.json(items);
+      res.json(items.map(pickBaseVideoFields));
       return;
     }
 
@@ -31,7 +32,7 @@ router.get('/list/:chatId', async (req: Request, res: Response) => {
       offset: (resolved.page - 1) * resolved.per_page,
     });
 
-    res.json(buildPageEnvelope(items, total, resolved));
+    res.json(buildPageEnvelope(items.map(pickBaseVideoFields), total, resolved));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

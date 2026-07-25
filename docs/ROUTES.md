@@ -119,6 +119,8 @@ buscada (nativamente limitada por `limit`, ver acima).
   - `limit` (opcional, default `100`).
   - `file_name` (opcional) — filtra por `file_name` contendo o termo
     (case-insensitive e sem diferenciar acentos).
+  - `thumbnail` (opcional, default `false`) — `true` | `false`, ver
+    "Thumbnail e metadados do vídeo" abaixo.
   - `page` / `per_page` (opcionais) — ver "Paginação" acima.
 - **Paginação nativa, exceto com `file_name`**: sem filtro de texto, cada
   página é buscada direto do Telegram (`total`/`total_pages` vêm da contagem
@@ -127,9 +129,28 @@ buscada (nativamente limitada por `limit`, ver acima).
   ser em memória sobre o resultado filtrado, senão a busca não encontraria
   vídeos fora da janela de uma única página nativa.
 - **Resposta**: sem `page`/`per_page`, `{ channel_id, channel_title, data: [{
-  message_id, file_name, size, mime_type, date, url }] }`. Com
-  `page`/`per_page`, `{ channel_id, channel_title, data: [...mesmos
-  itens...], page, per_page, total, total_pages }`.
+  message_id, file_name, size, mime_type, date, description, duration, width,
+  height, supports_streaming, thumbnail_width, thumbnail_height, thumbnail,
+  url }] }`. Com `page`/`per_page`, `{ channel_id, channel_title, data:
+  [...mesmos itens...], page, per_page, total, total_pages }`.
+- **Thumbnail e metadados do vídeo**: esta é a única rota de listagem que
+  devolve os campos extras acima — `/videos` e `/list/:chatId` mantêm o shape
+  enxuto (`message_id, file_name, size, mime_type, date`). `duration` (em
+  segundos), `width`, `height` e `supports_streaming` vêm do
+  `DocumentAttributeVideo`; `description` é a caption da mensagem;
+  `thumbnail_width`/`thumbnail_height` são as dimensões da maior thumbnail que
+  o Telegram tem pro vídeo (`null` se o vídeo não tiver nenhuma). Campos que o
+  Telegram não informa voltam `null` (`supports_streaming` volta `false`).
+  O campo `thumbnail` em si (um data URI JPEG com a imagem) só é preenchido
+  quando `?thumbnail=true` é passado — por padrão (`thumbnail=false` ou
+  omitido) ele vem `null`, sem nenhum download extra do Telegram. Quando
+  `true`, cada item causa um download real (`downloadMedia` pela maior
+  `PhotoSize`), paralelizado por `TELEGRAM_FETCH_CONCURRENCY` e cacheado por
+  `CACHE_TTL_MS` (purgável via `POST /cache/purge`); se o download de um item
+  falhar, aquele item simplesmente fica com `thumbnail: null` em vez de
+  derrubar a resposta inteira. Thumbnails são resolvidas só pros itens que
+  entram na resposta — nunca pra lista inteira quando uma página foi pedida,
+  igual às URLs assinadas.
 
 ## `GET /list/:chatId`
 
@@ -144,7 +165,10 @@ buscada (nativamente limitada por `limit`, ver acima).
 - **Resposta**: sem `page`/`per_page`, array de `{ message_id, file_name,
   size, mime_type, date }` (sem `url` — essa rota é só pra descoberta, sem o
   wrapper de canal). Com `page`/`per_page`, `{ data: [...mesmos itens...],
-  page, per_page, total, total_pages }`.
+  page, per_page, total, total_pages }`. Sem os metadados extras
+  (`thumbnail`, `duration`, …) de `/channels/:channelId/videos`: as duas rotas
+  compartilham o mesmo fetch/cache, mas esta projeta o item de volta pro shape
+  enxuto (`pickBaseVideoFields`, em `src/routes/video-fields.ts`).
 
 ## `GET /video/:chatId/:messageId`
 

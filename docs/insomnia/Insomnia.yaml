@@ -161,17 +161,24 @@ collection:
         **Query params**:
         - `limit` (default `100`) — máximo de vídeos a buscar.
         - `file_name` — filtra por `file_name` contendo o termo (case-insensitive, sem diferenciar acentos).
+        - `thumbnail` (default `false`) — `true` | `false`, ver "Thumbnail e metadados do vídeo" abaixo.
         - `page` / `per_page` (`per_page` até `100`) — ativa modo paginado.
 
         **Paginação nativa, exceto com `file_name`**: sem filtro de texto, cada página é buscada direto do Telegram via `offsetId`/`addOffset` (`total`/`total_pages` vêm da contagem real dele). Com `file_name`, a busca olha todo o conjunto (até `limit`) antes de filtrar e paginar em memória — senão a busca não encontraria vídeos fora da janela de uma única página nativa.
 
-        **Resposta**: sem paginação, `{ channel_id, channel_title, data: [{ message_id, file_name, size, mime_type, date, url }] }`. Com paginação, `{ channel_id, channel_title, data, page, per_page, total, total_pages }`.
+        **Resposta**: sem paginação, `{ channel_id, channel_title, data: [{ message_id, file_name, size, mime_type, date, description, duration, width, height, supports_streaming, thumbnail_width, thumbnail_height, thumbnail, url }] }`. Com paginação, `{ channel_id, channel_title, data, page, per_page, total, total_pages }`.
+
+        **Thumbnail e metadados do vídeo**: esta é a única rota de listagem que devolve os campos extras acima — `/videos` e `/list/:chatId` mantêm o shape enxuto (`message_id, file_name, size, mime_type, date`). `duration` (segundos), `width`, `height` e `supports_streaming` vêm do `DocumentAttributeVideo`; `description` é a caption da mensagem; `thumbnail_width`/`thumbnail_height` são as dimensões da maior thumbnail que o Telegram tem pro vídeo (`null` se não houver nenhuma). Campos que o Telegram não informa voltam `null` (`supports_streaming` volta `false`). O campo `thumbnail` (data URI JPEG) só é preenchido com `?thumbnail=true` — por padrão vem `null`, sem download extra. Com `true`, cada item causa um download real (`downloadMedia` pela maior `PhotoSize`), paralelizado por `TELEGRAM_FETCH_CONCURRENCY` e cacheado por `CACHE_TTL_MS`; se o download de um item falhar, ele fica com `thumbnail: null` em vez de derrubar a resposta. Thumbnails são resolvidas só pros itens que entram na resposta, igual às URLs assinadas.
       sortKey: -1784931286611
     method: GET
     parameters:
       - name: limit
         value: ''
         description: 'máximo de vídeos a buscar (default 100)'
+        disabled: true
+      - name: thumbnail
+        value: ''
+        description: 'true (baixa a thumbnail real do Telegram, 1 download por item) | false (default, thumbnail: null, sem download)'
         disabled: true
       - name: per_page
         value: ''
@@ -304,7 +311,7 @@ collection:
       modified: 1784934100000
       isPrivate: false
       description: |-
-        **Propósito**: envia um vídeo novo para `chatId` (aceita `me` pra Saved Messages). É a única rota que permite controlar nome de arquivo e thumbnail — `PATCH` de um vídeo já existente só permite editar a descrição (ver `docs/ROUTES.md` pra o motivo).
+        **Propósito**: envia um vídeo novo para `chatId` (aceita qualquer chat/canal que a conta tenha acesso — `me` pra Saved Messages, como neste exemplo, ou o ID de um canal, como no request "upload video (channel)" abaixo). É a única rota que permite controlar nome de arquivo e thumbnail — `PATCH` de um vídeo já existente só permite editar a descrição (ver `docs/ROUTES.md` pra o motivo).
 
         **Acesso**: Privada.
 
@@ -318,6 +325,47 @@ collection:
 
         **Resposta**: `{ chat_id, message_id, file_name, size, mime_type, date, url }` — `url` já vem assinada, pronta pra tocar o vídeo enviado.
       sortKey: -1784934100000
+    method: POST
+    body:
+      mimeType: multipart/form-data
+      params:
+        - name: file
+          type: file
+          fileName: ''
+        - name: thumbnail
+          type: file
+          fileName: ''
+          disabled: true
+        - name: file_name
+          value: ''
+          disabled: true
+        - name: description
+          value: ''
+          disabled: true
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: '{{ _.BASE_URL }}/video/-1004325653681'
+    name: upload video (channel)
+    meta:
+      id: req_4f1e8b6a2d9c5e3f7b0a4d8c6e2f1b9a
+      created: 1784934150000
+      modified: 1784934150000
+      isPrivate: false
+      description: |-
+        **Propósito**: mesma rota `POST /video/:chatId` do request "upload video", mas apontando pra um canal (`-1004325653681`) em vez de `me`/Saved Messages — `chatId` aceita qualquer chat/canal que a conta tenha permissão de postar, não só Saved Messages.
+
+        **Acesso**: Privada.
+
+        **Corpo**: idêntico ao request "upload video" (`multipart/form-data`: `file` obrigatório, `thumbnail`/`file_name`/`description` opcionais).
+
+        **Resposta**: `{ chat_id, message_id, file_name, size, mime_type, date, url }`.
+      sortKey: -1784934150000
     method: POST
     body:
       mimeType: multipart/form-data
@@ -364,6 +412,9 @@ collection:
         **Erros**: `404` com `{ "error": message }` se a mensagem não existir ou não puder ser editada.
       sortKey: -1784934200000
     method: PATCH
+    headers:
+      - name: Content-Type
+        value: application/json
     body:
       mimeType: application/json
       text: |-

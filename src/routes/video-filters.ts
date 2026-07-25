@@ -1,5 +1,5 @@
-import type { VideoListEntry } from '../telegram-client';
-import { includesSearchTerm } from '../utils/text-search';
+import type { VideoListEntry } from '@/telegram-client';
+import { includesSearchTerm } from '@/utils/text-search';
 
 export type VideoFilterQuery = {
   chatId?: string;

@@ -34,6 +34,25 @@ type VideoListItem = {
   date: number;
 };
 
+type VideoAttributes = {
+  duration: number | null;
+  width: number | null;
+  height: number | null;
+  supports_streaming: boolean;
+};
+
+type ThumbnailInfo = {
+  thumbnail_width: number | null;
+  thumbnail_height: number | null;
+  thumbnail: string | null;
+};
+
+// Item mais rico, servido por /channels/:channelId/videos: tudo aqui sai do
+// mesmo Api.Document que já vem na mensagem, sem chamada extra ao Telegram.
+// /list/:chatId e /videos ficam de fora e mantêm o shape enxuto de VideoListItem
+// (a projeção acontece em src/routes/video-fields.ts).
+type ChannelVideoItem = VideoListItem & VideoAttributes & ThumbnailInfo & { description: string | null };
+
 type VideoListEntry = {
   chat_id: string;
   chat_title: string;
@@ -55,14 +74,16 @@ type ChannelListEntry = {
 
 type VideoFetchParams = { limit: number; offset: number };
 
-type VideoFetchResult = { items: VideoListItem[]; total: number };
+type VideoFetchResult = { items: ChannelVideoItem[]; total: number };
 
 type ChannelVideosResult = {
   channel_id: string;
   channel_title: string;
-  items: VideoListItem[];
+  items: ChannelVideoItem[];
   total: number;
 };
+
+type VideoThumbnail = ThumbnailInfo & { thumbnail: string };
 
 type VideoMessageResult = VideoDocument & { message: Api.Message };
 
@@ -84,6 +105,60 @@ function extractVideoDocument(message: Api.Message): VideoDocument | null {
     size: Number(document.size),
     mimeType: document.mimeType || 'video/mp4',
     fileName: nameAttr?.fileName || `${message.id}.mp4`,
+  };
+}
+
+function extractVideoAttributes(document: Api.Document): VideoAttributes {
+  const videoAttribute = document.attributes?.find((attribute) => attribute.className === 'DocumentAttributeVideo') as
+    Api.DocumentAttributeVideo | undefined;
+
+  return {
+    duration: videoAttribute ? Math.round(videoAttribute.duration) : null,
+    width: videoAttribute?.w ?? null,
+    height: videoAttribute?.h ?? null,
+    supports_streaming: videoAttribute?.supportsStreaming ?? false,
+  };
+}
+
+// Só PhotoSize carrega w/h; PhotoStrippedSize/PhotoCachedSize não têm dimensões
+// declaradas no schema do MTProto, então não servem pra thumbnail_width/height.
+function findLargestPhotoSize(thumbs: Api.TypePhotoSize[]): Api.PhotoSize | undefined {
+  return thumbs
+    .filter((thumb): thumb is Api.PhotoSize => thumb.className === 'PhotoSize')
+    .reduce<Api.PhotoSize | undefined>(
+      (largest, thumb) => (!largest || thumb.w > largest.w ? thumb : largest),
+      undefined,
+    );
+}
+
+// thumbnail_width/height são de graça (só leem o Api.Document que já veio na
+// mensagem). Os bytes de `thumbnail`, porém, exigem um download por vídeo —
+// por isso ficam null aqui e só são preenchidos por getVideoThumbnail, quando
+// a rota pede explicitamente via ?thumbnail=true.
+function extractThumbnailInfo(document: Api.Document): ThumbnailInfo {
+  const largest = findLargestPhotoSize(document.thumbs ?? []);
+
+  return {
+    thumbnail_width: largest?.w ?? null,
+    thumbnail_height: largest?.h ?? null,
+    thumbnail: null,
+  };
+}
+
+function toJpegDataUri(bytes: Buffer): string {
+  return `data:image/jpeg;base64,${bytes.toString('base64')}`;
+}
+
+function buildChannelVideoItem(message: Api.Message, video: VideoDocument): ChannelVideoItem {
+  return {
+    message_id: message.id,
+    file_name: video.fileName,
+    size: video.size,
+    mime_type: video.mimeType,
+    date: message.date,
+    description: message.message || null,
+    ...extractVideoAttributes(video.document),
+    ...extractThumbnailInfo(video.document),
   };
 }
 
@@ -137,6 +212,40 @@ const getVideoMessage = withCache(
   getVideoMessageUncached,
 );
 
+// Ao contrário do preview stripped (que vem de graça na mensagem), aqui os
+// bytes da thumbnail real são baixados do Telegram — uma chamada por vídeo, por
+// isso é opt-in via ?thumbnail=full e passa pelo cache TTL.
+async function getVideoThumbnailUncached(chatId: string, messageId: string | number): Promise<VideoThumbnail> {
+  const { message, document } = await getVideoMessage(chatId, messageId);
+  const largest = findLargestPhotoSize(document.thumbs ?? []);
+  if (!largest) {
+    throw new Error(
+      `Vídeo ${chatId}:${messageId} não tem thumbnail baixável ` +
+        `(esperado: pelo menos um Api.PhotoSize em document.thumbs, recebido: ${document.thumbs?.length ?? 0} thumb(s))`,
+    );
+  }
+
+  const bytes = await client.downloadMedia(message, { thumb: largest });
+  if (!bytes || typeof bytes === 'string') {
+    throw new Error(
+      `downloadMedia não retornou os bytes da thumbnail de ${chatId}:${messageId} ` +
+        `(esperado: Buffer, recebido: ${typeof bytes})`,
+    );
+  }
+
+  return {
+    thumbnail: toJpegDataUri(Buffer.from(bytes)),
+    thumbnail_width: largest.w,
+    thumbnail_height: largest.h,
+  };
+}
+
+const getVideoThumbnail = withCache(
+  config.cacheTtlMs,
+  (chatId: string, messageId: string | number) => `${chatId}:${messageId}`,
+  getVideoThumbnailUncached,
+);
+
 async function listVideosUncached(chatId: string, { limit, offset }: VideoFetchParams): Promise<VideoFetchResult> {
   const tg = await ensureConnected();
   await resolveEntity(chatId);
@@ -146,17 +255,11 @@ async function listVideosUncached(chatId: string, { limit, offset }: VideoFetchP
     addOffset: offset,
   });
 
-  const items: VideoListItem[] = [];
+  const items: ChannelVideoItem[] = [];
   for (const message of messages) {
     const video = extractVideoDocument(message);
     if (!video) continue;
-    items.push({
-      message_id: message.id,
-      file_name: video.fileName,
-      size: video.size,
-      mime_type: video.mimeType,
-      date: message.date,
-    });
+    items.push(buildChannelVideoItem(message, video));
   }
 
   return { items, total: messages.total ?? items.length };
@@ -262,6 +365,7 @@ type UploadVideoParams = {
 // de mensagem existente (ver CLAUDE.md/docs/ROUTES.md para o motivo).
 async function uploadVideo(chatId: string, params: UploadVideoParams): Promise<VideoListItem> {
   const tg = await ensureConnected();
+  await resolveEntity(chatId);
   const finalFileName = params.fileName || params.originalFileName;
   const file = new CustomFile(finalFileName, params.buffer.length, '', params.buffer);
   const thumb = params.thumbnailBuffer
@@ -295,12 +399,14 @@ async function uploadVideo(chatId: string, params: UploadVideoParams): Promise<V
 
 async function editVideoCaption(chatId: string, messageId: string | number, description: string): Promise<void> {
   const tg = await ensureConnected();
+  await resolveEntity(chatId);
   await tg.editMessage(chatId, { message: Number(messageId), text: description });
   clearAllCaches();
 }
 
 async function deleteVideoMessage(chatId: string, messageId: string | number): Promise<void> {
   const tg = await ensureConnected();
+  await resolveEntity(chatId);
   await tg.deleteMessages(chatId, [Number(messageId)], { revoke: true });
   clearAllCaches();
 }
@@ -312,9 +418,10 @@ export {
   ensureConnected,
   getChannelVideos,
   getVideoMessage,
+  getVideoThumbnail,
   listAllVideos,
   listChannels,
   listVideos,
   uploadVideo,
 };
-export type { VideoFetchParams, VideoListEntry, VideoListItem };
+export type { ChannelVideoItem, VideoFetchParams, VideoListEntry, VideoListItem, VideoThumbnail };

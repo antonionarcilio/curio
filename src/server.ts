@@ -63,6 +63,7 @@ function requireToken(req: Request, res: Response, next: NextFunction): void {
 
 function buildApp() {
   const app = express();
+  app.use(express.json());
   app.use(requireToken);
   app.use(router);
   return app;

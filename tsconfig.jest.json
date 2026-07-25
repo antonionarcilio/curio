@@ -3,7 +3,9 @@
   "compilerOptions": {
     "rootDir": ".",
     "noEmit": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "baseUrl": ".",
+    "paths": { "@/*": ["src/*"], "@test/*": ["test/*"] }
   },
   "include": ["src/**/*.ts", "test/**/*.ts"]
 }

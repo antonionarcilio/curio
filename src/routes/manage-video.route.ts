@@ -1,6 +1,6 @@
+import { deleteVideoMessage, editVideoCaption } from '@/telegram-client';
 import express, { type Request, type Response } from 'express';
 import { z } from 'zod';
-import { deleteVideoMessage, editVideoCaption } from '../telegram-client';
 
 const router = express.Router();
 

@@ -1,5 +1,5 @@
+import { clearAllCaches } from '@/cache/ttl-cache';
 import express, { type Request, type Response } from 'express';
-import { clearAllCaches } from '../cache/ttl-cache';
 
 const router = express.Router();
 

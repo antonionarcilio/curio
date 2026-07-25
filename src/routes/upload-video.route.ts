@@ -1,8 +1,8 @@
+import { createSignedUrl } from '@/signed-url';
+import { uploadVideo } from '@/telegram-client';
 import express, { type Request, type Response } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
-import { createSignedUrl } from '../signed-url';
-import { uploadVideo } from '../telegram-client';
 import { SAFE_MIME_TYPE } from './http-utils';
 
 const router = express.Router();

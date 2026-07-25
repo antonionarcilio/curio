@@ -1,6 +1,6 @@
+import { client, getVideoMessage } from '@/telegram-client';
 import bigInt from 'big-integer';
 import express, { type Request, type Response } from 'express';
-import { client, getVideoMessage } from '../telegram-client';
 import { buildContentDisposition, CHUNK_SIZE, parseRange, SAFE_MIME_TYPE } from './http-utils';
 
 const router = express.Router();

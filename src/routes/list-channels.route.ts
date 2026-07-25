@@ -1,7 +1,7 @@
+import { listChannels } from '@/telegram-client';
+import { includesSearchTerm } from '@/utils/text-search';
 import express, { type Request, type Response } from 'express';
 import { z } from 'zod';
-import { listChannels } from '../telegram-client';
-import { includesSearchTerm } from '../utils/text-search';
 import { isPaginationRequested, paginate, paginationQuerySchema, resolvePagination } from './pagination';
 import { extractDigits } from './video-filters';
 

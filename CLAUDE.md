@@ -117,6 +117,8 @@ A full `test:e2e` run now does only 2 real uploads (one per target) instead of ~
 
 ## Configuration
 
+Every new environment variable added to the project must also be added to `.env.sample` (with a brief comment) so the sample file stays a complete reference. The validation schema in `src/config.ts` is the authoritative list — `.env.sample` mirrors it for documentation and onboarding.
+
 Copy `.env.sample` to `.env` and set:
 
 - `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` — from https://my.telegram.org → "API Development Tools". **Required** — the server refuses to start without them.
@@ -138,11 +140,12 @@ All of the above (except `SMOKE_TEST_CHANNEL_ID`, which bypasses `config.ts` ent
 
 - `src/config.js` — loads and validates env vars via dotenv.
 - `src/telegram-client.js` — owns the single shared `TelegramClient` instance (GramJS) and all Telegram-facing logic: connecting once (`ensureConnected`, lazy singleton), resolving video documents out of messages (`extractVideoDocument`), and read/write operations (`listVideos`, `listAllVideos`, `listChannels`, `getVideoMessage`, `uploadVideo`, `editVideoCaption`, `deleteVideoMessage`). All routes go through this module rather than touching GramJS directly. Read operations are wrapped in the TTL cache described below.
-- `src/cache/ttl-cache.js` — generic in-memory TTL cache (`createTtlCache`) plus `withCache`.
+- `src/utils/ttl-cache.js` — generic in-memory TTL cache (`createTtlCache`) plus `withCache`.
 - `src/router.js` — composes every endpoint router and is mounted by `src/server.js` at `/api/v1`.
 - `src/routes/` — route segment tree only. Every endpoint file must be named `route.ts` and must mirror the public path segments as closely as Express allows. Example: `/api/v1/cache/purge` lives at `src/routes/cache/purge/route.ts`; `/api/v1/video/delete/:chatId/:messageId` lives at `src/routes/video/delete/route.ts`.
-- `src/routes/` must not contain helpers, utils, services, hooks, or shared implementation files. Put reusable route support under `src/http`, `src/utils`, `src/services`, or another non-`routes` directory that matches the responsibility. Keep `src/routes/**/route.ts` focused on parsing the request, calling services, and returning the response.
-- `src/http/video-response.js` and `src/http/video-stream.js` — shared HTTP/video response helpers, including Range parsing, safe `Content-Disposition`, chunk size, MIME safety, and shared stream/download behavior.
+- `src/routes/` must not contain helpers, utils, services, hooks, or shared implementation files. Put reusable route support under `src/utils` or `src/services` only. Keep `src/routes/**/route.ts` focused on parsing the request, calling services, and returning the response.
+- `src/utils/http-response.js` — HTTP protocol utilities (Range parsing, `Content-Disposition`, MIME safety, chunk size constants).
+- `src/services/videos/stream.js` — Telegram-to-HTTP streaming logic that ties `telegram-client` to Express response objects.
 - `src/signedUrl.js` — `createSignedUrl`/`verifySignedUrl`: HMAC-SHA256 over `chatId:messageId:exp`, 1h TTL. Generated URLs point to `/api/v1/video/stream/...`.
 - `src/login.js` — standalone script for the one-time interactive login described above.
 
@@ -162,13 +165,13 @@ All of the above (except `SMOKE_TEST_CHANNEL_ID`, which bypasses `config.ts` ent
 
 Every read function exported by `src/telegram-client.js` (`listChannels`, `listVideos`, `getChannelVideos`, `listAllVideos`, `getVideoMessage`) is wrapped with `withCache` from `src/cache/ttl-cache.js`: the function's actual body lives in a `*Uncached` variant, and the exported name is `withCache(config.cacheTtlMs, keyFn, fooUncached)`. The cache is in-memory, keyed per function, and dedupes concurrent identical requests. Repeated requests to `/api/v1/videos/grouped`, `/api/v1/videos/by/:chatId`, and `/api/v1/channels` come back near-instant within the TTL window (`CACHE_TTL_MS`), at the cost of listings being up to that long out of date after a new video is sent on Telegram.
 
-`getVideoMessage` (used by stream/download to resolve `chatId:messageId` → document/size/mimeType/fileName) is cached the same way, keyed by `` `${chatId}:${messageId}` ``. The actual byte transfer (`client.iterDownload` in `src/http/video-stream.ts`) is **never** cached — only the metadata lookup is.
+`getVideoMessage` (used by stream/download to resolve `chatId:messageId` → document/size/mimeType/fileName) is cached the same way, keyed by `` `${chatId}:${messageId}` ``. The actual byte transfer (`client.iterDownload` in `src/services/videos/stream.ts`) is **never** cached — only the metadata lookup is.
 
 `listAllVideos` additionally fetches chats in parallel (bounded by `TELEGRAM_FETCH_CONCURRENCY`, via `p-limit`) instead of the previous one-chat-at-a-time loop. `p-limit` is pinned to `3.1.0` — versions 4+ are ESM-only and break this CommonJS project.
 
 **Adding a new read function that should be cached**: don't hand-roll `getOrSet` calls — write the function body as `*Uncached`, then export `withCache(config.cacheTtlMs, keyFn, fooUncached)`, matching the existing five. This is what makes the caching "global": any new route that reuses an existing `telegram-client.js` function inherits caching automatically; a genuinely new fetch only needs this one extra line.
 
-**Manual purge**: `POST /api/v1/cache/purge` (`src/routes/cache/purge/route.ts`) calls `clearAllCaches()` from `src/cache/ttl-cache.js`, which clears every cache's `store`/`pending` maps. A new cached function automatically becomes purge-able the moment it's wrapped in `createTtlCache`/`withCache`.
+**Manual purge**: `POST /api/v1/cache/purge` (`src/routes/cache/purge/route.ts`) calls `clearAllCaches()` from `src/utils/ttl-cache.js`, which clears every cache's `store`/`pending` maps. A new cached function automatically becomes purge-able the moment it's wrapped in `createTtlCache`/`withCache`.
 
 ### Native video filtering and pagination
 
@@ -192,11 +195,11 @@ Every read function exported by `src/telegram-client.js` (`listChannels`, `listV
 
 ### Key implementation details worth knowing before changing streaming/auth code
 
-- Chunking uses a fixed `CHUNK_SIZE` of 512KB (`src/http/video-response.js`).
+- Chunking uses a fixed `CHUNK_SIZE` of 512KB (`src/utils/http-response.js`).
 - `client.iterDownload`'s `offset`/`limit` must be `big-integer` instances (the `big-integer` package), not native `BigInt` — GramJS calls `.divide()`/`.add()` on them internally, which native `BigInt` doesn't have. Passing a native `BigInt` fails silently inside the iterator and surfaces as a generic `404` from the route's catch block.
 - Client disconnect is tracked (`req.on("close")`) so an aborted download stops iterating instead of continuing to pull from Telegram after the response is gone.
 - `chatId` in routes is passed straight to GramJS (`getMessages`/`getEntity`); `"me"` is a GramJS-recognized shortcut for Saved Messages.
-- `Content-Disposition` filenames must be ASCII-safe or the HTTP header write throws (`Invalid character in header content`), which the route's catch block turns into a misleading generic `404`. `buildContentDisposition` in `src/http/video-response.js` sends an ASCII-sanitized `filename=` fallback alongside a percent-encoded `filename*=UTF-8''...` (RFC 5987/6266) for the real name — needed because Telegram filenames routinely contain CJK text, emoji, etc.
+- `Content-Disposition` filenames must be ASCII-safe or the HTTP header write throws (`Invalid character in header content`), which the route's catch block turns into a misleading generic `404`. `buildContentDisposition` in `src/utils/http-response.js` sends an ASCII-sanitized `filename=` fallback alongside a percent-encoded `filename*=UTF-8''...` (RFC 5987/6266) for the real name — needed because Telegram filenames routinely contain CJK text, emoji, etc.
 
 ### JSON field naming convention
 
@@ -229,6 +232,18 @@ Files whose purpose is to document something (e.g. `docs/ROUTES.md`) use `SNAKE_
 ### Directory naming convention
 
 All directories in this project use `kebab-case`, lowercase — no `PascalCase`, `camelCase`, or `snake_case` (e.g. `src`, `src/routes`, `src/types`, `docs`). This applies to any new folder added under `src/` or elsewhere in the repo. This is about folder names only — file naming has its own conventions above (`JSON field naming convention`, `Doc file naming convention`).
+
+### Directory structure and layer rules
+
+Every file under `src/` belongs to exactly one of three layers, determined by what it depends on:
+
+**`src/routes/`** — Route handlers only. Each endpoint is a single `route.ts` file mirroring the URL path after `/api/v1`. Its job is parsing the request (query, params, body), calling into `services/`, and returning the response. No business logic, no direct Telegram calls, no shared implementation — if you need code that two routes could reuse, it must go in `services/` or `utils/`.
+
+**`src/services/`** — Domain business logic, organized by subdomain (e.g. `videos/`, `upload-progress-store.ts`). A service may import from `config`, `telegram-client`, `utils/`, and external packages. If a module coordinates between multiple subsystems or encapsulates a business rule (ffprobe, thumbnail resolution, Telegram streaming), it belongs here.
+
+**`src/utils/`** — Pure, generic utilities with no imports from project modules (only stdlib or external packages). No side effects beyond their parameters. Examples: HTTP header parsing (`http-response.ts`), pagination helpers (`pagination.ts`), TTL cache data structure (`ttl-cache.ts`), text search (`text-search.ts`).
+
+**Rule of thumb when adding a new file**: if it imports anything from `src/` (besides `utils/` itself), it goes in `services/`. If it imports nothing from `src/`, it goes in `utils/`. If it's a request handler, it goes in `routes/` as a `route.ts`.
 
 ### Import paths (absolute)
 

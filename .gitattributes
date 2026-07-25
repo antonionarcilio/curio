@@ -1,0 +1,2 @@
+src/_assets/sample/*.mp4 filter=lfs diff=lfs merge=lfs -text
+src/_assets/sample/*.jpg filter=lfs diff=lfs merge=lfs -text

@@ -356,6 +356,7 @@ type UploadVideoParams = {
   originalFileName: string;
   description?: string;
   thumbnailBuffer?: Buffer;
+  onProgress?: (progress: number) => void;
 };
 
 // Mesmo teto que o próprio Telegram aplica a contas normais. sendFile's
@@ -381,7 +382,12 @@ async function uploadVideo(chatId: string, params: UploadVideoParams): Promise<V
   // vazio aqui (tudo em memória). O handle resultante (Api.InputFile ou
   // InputFileBig) é reconhecido diretamente por sendFile, que pula a etapa de
   // upload e só monta a mensagem.
-  const uploadedFile = await tg.uploadFile({ file, workers: 1, maxBufferSize: MAX_UPLOAD_SIZE_BYTES });
+  const uploadedFile = await tg.uploadFile({
+    file,
+    workers: 1,
+    maxBufferSize: MAX_UPLOAD_SIZE_BYTES,
+    onProgress: params.onProgress,
+  });
 
   const attributes: Api.TypeDocumentAttribute[] = [
     new Api.DocumentAttributeFilename({ fileName: params.originalFileName }),

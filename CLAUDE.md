@@ -117,18 +117,22 @@ A full `test:e2e` run now does only 2 real uploads (one per target) instead of ~
 
 ## Configuration
 
-Copy `.env.example` to `.env` and set:
+Copy `.env.sample` to `.env` and set:
 
-- `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` — from https://my.telegram.org → "API Development Tools"
-- `TELEGRAM_SESSION` — produced by `npx pnpm login`
+- `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` — from https://my.telegram.org → "API Development Tools". **Required** — the server refuses to start without them.
+- `TELEGRAM_SESSION` — produced by `npx pnpm login`. Optional/empty on first run — that's the whole point of `npx pnpm login`, which only needs `TELEGRAM_API_ID`/`TELEGRAM_API_HASH`/`ACCESS_TOKEN` to already be set.
 - `PORT` — HTTP port (default 8787)
-- `ACCESS_TOKEN` — shared secret required via `Authorization: Bearer ...` on every request; also used as the HMAC key for signed streaming URLs (see below). Treat it as a password.
+- `ACCESS_TOKEN` — shared secret required via `Authorization: Bearer ...` on every request; also used as the HMAC key for signed streaming URLs (see below). Treat it as a password. **Required** — the server refuses to start without it (an empty/missing token would otherwise silently leave header auth impossible to satisfy).
 - `NODE_ENV` — must be exactly `development` to enable the dev auto-fill behavior described below; any other value (including unset) is treated as strict/production
 - `CACHE_TTL_MS` — how long (ms) read results from `telegram-client.ts` stay cached in memory (default `180000`, 3 min). See "Caching and fetch concurrency" below.
 - `TELEGRAM_FETCH_CONCURRENCY` — max chats fetched in parallel by `listAllVideos` (default `5`). Higher values speed up `/api/v1/videos/grouped` but raise the risk of hitting Telegram's `FLOOD_WAIT`.
+- `UPLOAD_CONCURRENCY_LIMIT` — max real uploads (`tg.uploadFile`/`tg.sendFile`) running in parallel against the Telegram account (default `1`). Same `FLOOD_WAIT` risk as `TELEGRAM_FETCH_CONCURRENCY`, but for writes — requests beyond the limit keep their job in `queued` status (see `POST /api/v1/video/upload/:chatId` in `docs/ROUTES.md`) until a slot frees up.
+- `UPLOAD_PROGRESS_TTL_MINUTES` — how long (minutes) a completed/failed upload job stays queryable via `GET /api/v1/video/upload/progress/:jobId` before being cleared from memory (default `5`). Converted to ms once in `src/config.ts` (`config.uploadProgressTtlMs`) — the rest of the codebase only ever sees the ms value.
 - `SMOKE_TEST_CHANNEL_ID` — channel `npx pnpm test:e2e` uses to also round-trip list/upload/edit/delete against a real channel, not just Saved Messages (default `-1004325653681`). Must keep the `-100` prefix — GramJS reads a plain positive ID as a user (`PeerUser`), not a channel, and entity resolution fails. Only read by `test/e2e/helpers/video-fixture.ts`, never by the server itself — swap it to any channel the logged-in account can post/delete in.
 
-`src/config.js` centralizes env parsing and throws immediately if `TELEGRAM_API_ID`/`TELEGRAM_API_HASH` are missing.
+All of the above (except `SMOKE_TEST_CHANNEL_ID`, which bypasses `config.ts` entirely) are validated by a Zod schema in `src/config.ts` at import time — the process throws immediately, listing every offending var, if a required var is missing/empty or a numeric var isn't a valid finite number (e.g. `PORT=abc`). This runs before `npx pnpm start`'s `app.listen()` and before `npx pnpm login`, since both import `src/config.ts` as their first step.
+
+`src/config.js` centralizes env parsing and validation (Zod schema, see above).
 
 ## Architecture
 

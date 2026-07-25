@@ -87,7 +87,12 @@ memória e só então pagina. Em
 
 ## `POST /api/v1/video/upload/:chatId`
 
-- **Propósito**: envia um vídeo novo para `chatId`.
+- **Propósito**: envia um vídeo novo para `chatId`. **Assíncrona**: o envio
+  real pro Telegram (`tg.uploadFile`/`tg.sendFile`) pode levar minutos em
+  arquivos grandes, então a rota não segura a resposta HTTP até o fim (isso
+  estourava o timeout de clientes como o Insomnia) — ela responde assim que o
+  arquivo termina de chegar no servidor, e o progresso/resultado final devem
+  ser consultados em `GET /api/v1/video/upload/progress/:jobId`.
 - **Acesso**: Privada.
 - **Corpo**: `multipart/form-data`, em memória:
   - `file` obrigatório, somente `video/*`.
@@ -96,9 +101,30 @@ memória e só então pagina. Em
   - `description` opcional, até 1024 caracteres.
   - O nome do arquivo não é configurável: `file_name` na resposta é sempre o
     nome original do arquivo enviado.
-- **Cache**: chama `clearAllCaches()` após sucesso.
-- **Resposta**: `{ chat_id, message_id, file_name, size, mime_type, date,
-  url }`, com `url` apontando para `/api/v1/video/stream/...`.
+- **Concorrência**: no máximo `UPLOAD_CONCURRENCY_LIMIT` uploads reais rodam
+  ao mesmo tempo contra a conta Telegram (default `1`, mesma razão de
+  `FLOOD_WAIT` que motiva `TELEGRAM_FETCH_CONCURRENCY` nas rotas de leitura).
+  Requests além do limite ficam com o job em `queued` até uma vaga abrir.
+- **Resposta**: `202 Accepted` imediato, `{ job_id, status: "queued" }`. O
+  `job_id` deve ser usado em `GET /api/v1/video/upload/progress/:jobId` para
+  acompanhar o andamento e obter o resultado final.
+
+## `GET /api/v1/video/upload/progress/:jobId`
+
+- **Propósito**: consulta o andamento de um upload iniciado por
+  `POST /api/v1/video/upload/:chatId`.
+- **Acesso**: Privada.
+- **Query params**: nenhum.
+- **Resposta**: `{ job_id, status, progress }`, onde `status` é
+  `"queued" | "uploading" | "completed" | "error"` e `progress` é uma fração
+  de `0` a `1` (progresso real do envio ao Telegram, via `tg.uploadFile`).
+  Quando `status` é `"completed"`, a resposta também inclui
+  `{ chat_id, message_id, file_name, size, mime_type, date, url }` — o mesmo
+  formato que a antiga resposta síncrona do upload, com `url` apontando para
+  `/api/v1/video/stream/...`. Quando `status` é `"error"`, inclui `error` com
+  a mensagem da falha. Um `job_id` desconhecido ou já expirado retorna `404`.
+- **Retenção**: o resultado de um job concluído/com erro fica disponível por
+  `UPLOAD_PROGRESS_TTL_MINUTES` (default 5) antes de ser limpo da memória.
 
 ## `PATCH /api/v1/video/update/:chatId/:messageId`
 

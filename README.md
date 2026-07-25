@@ -13,7 +13,7 @@ Saved Messages, e limita downloads a 20MB.
 
 1. Crie um app em https://my.telegram.org → "API Development Tools" e anote
    `api_id` e `api_hash`.
-2. Copie `.env.example` para `.env` e preencha `TELEGRAM_API_ID` e
+2. Copie `.env.sample` para `.env` e preencha `TELEGRAM_API_ID` e
    `TELEGRAM_API_HASH`. Defina também um `ACCESS_TOKEN` (senha simples que vai
    proteger a URL do servidor).
 3. Instale as dependências:

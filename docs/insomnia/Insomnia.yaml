@@ -200,11 +200,14 @@ collection:
       modified: 1784934100000
       isPrivate: false
       description: |-
-        Envia vídeo novo para `chatId`.
+        Envia vídeo novo para `chatId`. Assíncrona: não segura a resposta até o
+        Telegram terminar de receber o arquivo — use "upload progress" com o
+        `job_id` retornado para acompanhar e obter o resultado final.
 
         Acesso: Privada.
         Corpo: multipart `file` obrigatório, `thumbnail` e `description` opcionais. O nome do arquivo não é configurável.
-        Resposta: `{ chat_id, message_id, file_name, size, mime_type, date, url }`.
+        Concorrência: no máximo UPLOAD_CONCURRENCY_LIMIT uploads reais em paralelo (default 1); os demais ficam com o job em `queued`.
+        Resposta: `202 Accepted`, `{ job_id, status: "queued" }`.
       sortKey: -1784934100000
     method: POST
     body:
@@ -220,6 +223,22 @@ collection:
         - name: description
           value: ''
           disabled: true
+    settings: *settings
+  - url: '{{ _.BASE_URL }}/api/v1/video/upload/progress/JOB_ID'
+    name: upload progress
+    meta:
+      id: req_video_upload_progress_v1
+      created: 1784934150000
+      modified: 1784934150000
+      isPrivate: false
+      description: |-
+        Consulta o andamento de um upload iniciado por "upload video".
+
+        Acesso: Privada.
+        Resposta: `{ job_id, status, progress }`, status é "queued" | "uploading" | "completed" | "error". Quando "completed", inclui também `{ chat_id, message_id, file_name, size, mime_type, date, url }`; quando "error", inclui `error`. `job_id` desconhecido/expirado retorna 404.
+        Retenção: resultado fica disponível por UPLOAD_PROGRESS_TTL_MINUTES (default 5) após concluir.
+      sortKey: -1784934150000
+    method: GET
     settings: *settings
   - url: '{{ _.BASE_URL }}/api/v1/video/update/-1004325653681/6'
     name: update video description

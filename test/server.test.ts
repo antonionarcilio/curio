@@ -164,3 +164,52 @@ describe('requireToken dev auto-fill (fail-closed by design)', () => {
     expect(res.status).toBe(401);
   });
 });
+
+// `app.listen(port, callback)`'s callback fires as a 'listening' listener, but
+// under the test harness's real timers it can lag noticeably behind the point
+// where `httpServer.listening` first reads true — polling avoids relying on
+// that ordering.
+async function waitUntil(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) throw new Error('timed out waiting for condition');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+describe('startServer', () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+
+  afterEach(() => {
+    process.env.NODE_ENV = originalNodeEnv;
+    jest.resetModules();
+  });
+
+  it('connects, listens, and logs the dev hint when NODE_ENV=development', async () => {
+    jest.resetModules();
+    process.env.NODE_ENV = 'development';
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- must re-require after jest.resetModules() to pick up the new NODE_ENV
+    const devServer = require('../src/server') as typeof import('../src/server');
+    const httpServer = await devServer.startServer();
+    await waitUntil(() => logSpy.mock.calls.length >= 3);
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('telegram-cdn rodando em'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Modo dev'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Exemplo: curl'));
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    logSpy.mockRestore();
+  });
+
+  it('omits the dev hint when NODE_ENV is not development', async () => {
+    jest.resetModules();
+    process.env.NODE_ENV = 'test';
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- must re-require after jest.resetModules() to pick up the new NODE_ENV
+    const strictServer = require('../src/server') as typeof import('../src/server');
+    const httpServer = await strictServer.startServer();
+    await waitUntil(() => logSpy.mock.calls.length >= 2);
+    expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('Modo dev'));
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    logSpy.mockRestore();
+  });
+});

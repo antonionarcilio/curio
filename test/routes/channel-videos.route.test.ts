@@ -60,6 +60,24 @@ describe('GET /channels/:channelId/videos', () => {
     expect(res.body.data[0].message_id).toBe(1);
   });
 
+  it('fetches, filters by file_name, then paginates in-memory when file_name and page/per_page are both given', async () => {
+    mockGetChannelVideos.mockResolvedValue({
+      channel_id: 'chat1',
+      channel_title: 'My Channel',
+      items: [item(1, 'aula-01.mp4'), item(2, 'aula-02.mp4'), item(3, 'aula-03.mp4')],
+      total: 3,
+    });
+
+    const res = await request(buildApp())
+      .get('/channels/chat1/videos')
+      .query({ file_name: 'aula', page: 2, per_page: 1 });
+
+    expect(mockGetChannelVideos).toHaveBeenCalledWith('chat1', { limit: 100, offset: 0 });
+    expect(res.body).toMatchObject({ channel_id: 'chat1', page: 2, per_page: 1, total: 3, total_pages: 3 });
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].message_id).toBe(2);
+  });
+
   it('returns a paginated envelope with native pagination when page/per_page are given (no file_name)', async () => {
     mockGetChannelVideos.mockResolvedValue({
       channel_id: 'chat1',

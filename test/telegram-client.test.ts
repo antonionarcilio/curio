@@ -127,6 +127,26 @@ describe('telegram-client', () => {
       const result = await listVideos('chatY', { limit: 10, offset: 0 });
       expect(result.items).toHaveLength(0);
     });
+
+    it('falls back to "video/mp4" when the document has no mimeType', async () => {
+      mockClient.getMessages.mockResolvedValue(
+        withTotal([
+          makeMessage({
+            media: { document: { size: 10, mimeType: '', attributes: [] } },
+          }),
+        ]),
+      );
+      const result = await listVideos('chatZ', { limit: 10, offset: 0 });
+      expect(result.items[0].mime_type).toBe('video/mp4');
+    });
+
+    it('falls back total to items.length when getMessages result has no .total', async () => {
+      const messages = [makeMessage({ id: 1 }), makeMessage({ id: 2 })];
+      mockClient.getMessages.mockResolvedValue(messages);
+      const result = await listVideos('chatNoTotal', { limit: 10, offset: 0 });
+      expect(result.total).toBe(result.items.length);
+      expect(result.total).toBe(2);
+    });
   });
 
   describe('listChannels', () => {
@@ -149,6 +169,12 @@ describe('telegram-client', () => {
         { channel_id: '5', channel_title: 'name-fallback' },
         { channel_id: '6', channel_title: '6' },
       ]);
+    });
+
+    it('falls back channel_id and channel_title to "" when dialog.id is nullish', async () => {
+      mockClient.getDialogs.mockResolvedValue([{ id: undefined, isChannel: true, title: undefined, name: undefined }]);
+      const channels = await listChannels(100);
+      expect(channels).toEqual([{ channel_id: '', channel_title: '' }]);
     });
   });
 
@@ -215,6 +241,33 @@ describe('telegram-client', () => {
       const videos = await listAllVideos({ perChatLimit: 10 });
       expect(videos).toHaveLength(1);
       expect(videos[0].chat_id).toBe('7');
+    });
+
+    it('skips non-video messages within a dialog', async () => {
+      mockClient.getDialogs.mockResolvedValue([{ id: 1, title: 'Chat 1' }]);
+      mockClient.getMessages.mockResolvedValue(withTotal([makeMessage({ media: undefined })]));
+      const videos = await listAllVideos({ perChatLimit: 10 });
+      expect(videos).toHaveLength(0);
+    });
+
+    it('falls back chat_title to name, then to chatId, when title is missing', async () => {
+      mockClient.getDialogs.mockResolvedValue([
+        { id: 1, title: undefined, name: 'name-fallback' },
+        { id: 2, title: undefined, name: undefined },
+      ]);
+      mockClient.getMessages.mockResolvedValue(withTotal([makeMessage({ id: 1 })]));
+      const videos = await listAllVideos({ perChatLimit: 10 });
+      const titles = videos.map((v) => v.chat_title);
+      expect(titles).toContain('name-fallback');
+      expect(titles).toContain('2');
+    });
+
+    it('defaults perChatLimit to 100 when called without arguments', async () => {
+      mockClient.getDialogs.mockResolvedValue([{ id: 1, title: 'Chat 1' }]);
+      mockClient.getMessages.mockResolvedValue(withTotal([makeMessage({ id: 1 })]));
+      await listAllVideos();
+      const call = mockClient.getMessages.mock.calls[0][1];
+      expect(call).toMatchObject({ limit: 100 });
     });
   });
 });

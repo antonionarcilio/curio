@@ -123,6 +123,74 @@ describe('GET /video/:chatId/:messageId', () => {
     expect(callArgs.offset.eq(bigInt(2))).toBe(true);
   });
 
+  it('waits for the "drain" event when res.write reports backpressure', async () => {
+    mockGetVideoMessage.mockResolvedValue({
+      message: { media: {} },
+      size: 11,
+      mimeType: 'video/mp4',
+      fileName: 'video.mp4',
+    });
+    mockIterDownload.mockReturnValue(fakeAsyncIterable([Buffer.from('hello '), Buffer.from('world')]));
+
+    const app = express();
+    app.use((req, res, next) => {
+      const originalWrite = res.write.bind(res);
+      let writeCount = 0;
+      jest.spyOn(res, 'write').mockImplementation(((chunk: Buffer) => {
+        writeCount += 1;
+        originalWrite(chunk);
+        if (writeCount === 1) {
+          setImmediate(() => res.emit('drain'));
+          return false;
+        }
+        return true;
+      }) as typeof res.write);
+      next();
+    });
+    app.use(streamVideoRouter);
+
+    const res = await request(app)
+      .get('/video/chat1/1')
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.on('end', () => callback(null, Buffer.concat(chunks)));
+      });
+
+    expect(res.status).toBe(200);
+    expect((res.body as Buffer).toString()).toBe('hello world');
+  });
+
+  it('ends the response without a JSON error body when iterDownload fails after headers are sent', async () => {
+    mockGetVideoMessage.mockResolvedValue({
+      message: { media: {} },
+      size: 20,
+      mimeType: 'video/mp4',
+      fileName: 'video.mp4',
+    });
+    mockIterDownload.mockReturnValue({
+      [Symbol.asyncIterator]: async function* () {
+        yield Buffer.from('first-chunk-');
+        throw new Error('boom mid-stream');
+      },
+    });
+
+    // The declared Content-Length (20) doesn't match the truncated body (12
+    // bytes) once the stream errors mid-flight, so the connection is closed
+    // abruptly instead of ending cleanly — proving the route's catch block
+    // took the `res.headersSent` branch (`res.end()`) rather than trying to
+    // send a JSON error body on top of an already-started response.
+    let caughtError: Error | undefined;
+    try {
+      await request(buildApp()).get('/video/chat1/1').buffer(true);
+    } catch (err) {
+      caughtError = err as Error;
+    }
+
+    expect(caughtError?.message).toBe('aborted');
+  });
+
   it('stops writing further chunks once the client connection is aborted', async () => {
     mockGetVideoMessage.mockResolvedValue({
       message: { media: {} },

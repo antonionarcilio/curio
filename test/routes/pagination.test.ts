@@ -56,6 +56,10 @@ describe('resolvePagination', () => {
   it('caps the default per_page at MAX_PER_PAGE even when defaultPerPage exceeds it', () => {
     expect(resolvePagination({}, 500)).toEqual({ page: 1, per_page: 100 });
   });
+
+  it('falls back defaultPerPage to 20 when called without a second argument', () => {
+    expect(resolvePagination({ page: 2 })).toEqual({ page: 2, per_page: 20 });
+  });
 });
 
 describe('paginate', () => {

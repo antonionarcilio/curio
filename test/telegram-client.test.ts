@@ -4,12 +4,16 @@ const mockClient = {
   getDialogs: jest.fn(),
   getEntity: jest.fn(),
   iterDownload: jest.fn(),
+  sendFile: jest.fn(),
+  editMessage: jest.fn(),
+  deleteMessages: jest.fn(),
 };
 
 jest.mock('telegram', () => ({
   TelegramClient: jest.fn(() => mockClient),
   Api: {
     InputMessagesFilterVideo: jest.fn(() => ({})),
+    DocumentAttributeFilename: jest.fn((opts) => ({ className: 'DocumentAttributeFilename', ...opts })),
   },
 }));
 
@@ -17,15 +21,22 @@ jest.mock('telegram/sessions', () => ({
   StringSession: jest.fn(),
 }));
 
+jest.mock('telegram/client/uploads', () => ({
+  CustomFile: jest.fn().mockImplementation((name, size, path, buffer) => ({ name, size, path, buffer })),
+}));
+
 import { clearAllCaches } from '../src/cache/ttl-cache';
 import {
   client,
+  deleteVideoMessage,
+  editVideoCaption,
   ensureConnected,
   getChannelVideos,
   getVideoMessage,
   listAllVideos,
   listChannels,
   listVideos,
+  uploadVideo,
 } from '../src/telegram-client';
 
 function makeMessage(overrides: Record<string, unknown> = {}) {
@@ -102,6 +113,28 @@ describe('telegram-client', () => {
       await getVideoMessage('chatCache', 42);
       expect(mockClient.getMessages).toHaveBeenCalledTimes(1);
     });
+
+    it('warms the entity cache via getDialogs and retries when getEntity fails cold, then succeeds', async () => {
+      mockClient.getEntity.mockRejectedValueOnce(new Error('Could not find the input entity for {}'));
+      mockClient.getEntity.mockResolvedValueOnce({ id: 1004325653681 });
+      mockClient.getDialogs.mockResolvedValue([]);
+      mockClient.getMessages.mockResolvedValue([makeMessage({ id: 7 })]);
+
+      const result = await getVideoMessage('coldChat', 7);
+
+      expect(mockClient.getDialogs).toHaveBeenCalledTimes(1);
+      expect(mockClient.getEntity).toHaveBeenCalledTimes(2);
+      expect(result.fileName).toBe('video.mp4');
+    });
+
+    it('rejects with a clear error when entity resolution still fails after warming the cache', async () => {
+      mockClient.getEntity.mockRejectedValueOnce(new Error('Could not find the input entity for {}'));
+      mockClient.getEntity.mockRejectedValueOnce(new Error('Could not find the input entity for {}'));
+      mockClient.getDialogs.mockResolvedValue([]);
+
+      await expect(getVideoMessage('unresolvableChat', 8)).rejects.toThrow(/unresolvableChat/);
+      expect(mockClient.getMessages).not.toHaveBeenCalled();
+    });
   });
 
   describe('listVideos', () => {
@@ -138,6 +171,30 @@ describe('telegram-client', () => {
       );
       const result = await listVideos('chatZ', { limit: 10, offset: 0 });
       expect(result.items[0].mime_type).toBe('video/mp4');
+    });
+
+    it('warms the entity cache via getDialogs and retries when getEntity fails cold, then succeeds', async () => {
+      mockClient.getEntity.mockRejectedValueOnce(new Error('Could not find the input entity for {}'));
+      mockClient.getEntity.mockResolvedValueOnce({ id: 1 });
+      mockClient.getDialogs.mockResolvedValue([]);
+      mockClient.getMessages.mockResolvedValue(withTotal([makeMessage({ id: 1 })]));
+
+      const result = await listVideos('coldChatList', { limit: 10, offset: 0 });
+
+      expect(mockClient.getDialogs).toHaveBeenCalledTimes(1);
+      expect(mockClient.getEntity).toHaveBeenCalledTimes(2);
+      expect(result.items).toHaveLength(1);
+    });
+
+    it('rejects with a clear error when entity resolution still fails after warming the cache', async () => {
+      mockClient.getEntity.mockRejectedValueOnce(new Error('Could not find the input entity for {}'));
+      mockClient.getEntity.mockRejectedValueOnce(new Error('Could not find the input entity for {}'));
+      mockClient.getDialogs.mockResolvedValue([]);
+
+      await expect(listVideos('unresolvableChatList', { limit: 10, offset: 0 })).rejects.toThrow(
+        /unresolvableChatList/,
+      );
+      expect(mockClient.getMessages).not.toHaveBeenCalled();
     });
 
     it('falls back total to items.length when getMessages result has no .total', async () => {
@@ -268,6 +325,115 @@ describe('telegram-client', () => {
       await listAllVideos();
       const call = mockClient.getMessages.mock.calls[0][1];
       expect(call).toMatchObject({ limit: 100 });
+    });
+  });
+
+  describe('uploadVideo', () => {
+    it('sends the file via sendFile with a custom filename, thumbnail and caption, and returns the metadata', async () => {
+      mockClient.sendFile.mockResolvedValue(
+        makeMessage({
+          id: 55,
+          media: {
+            document: {
+              size: 2048,
+              mimeType: 'video/mp4',
+              attributes: [{ className: 'DocumentAttributeFilename', fileName: 'custom-name.mp4' }],
+            },
+          },
+        }),
+      );
+
+      const result = await uploadVideo('me', {
+        buffer: Buffer.from('video-bytes'),
+        originalFileName: 'original.mp4',
+        fileName: 'custom-name.mp4',
+        description: 'uma descrição',
+        thumbnailBuffer: Buffer.from('thumb-bytes'),
+      });
+
+      expect(mockClient.sendFile).toHaveBeenCalledTimes(1);
+      const [chatId, options] = mockClient.sendFile.mock.calls[0];
+      expect(chatId).toBe('me');
+      expect(options.caption).toBe('uma descrição');
+      expect(options.forceDocument).toBe(false);
+      expect(options.supportsStreaming).toBe(true);
+      expect(options.file).toMatchObject({ name: 'custom-name.mp4' });
+      expect(options.thumb).toMatchObject({ name: 'thumb.jpg' });
+      expect(options.attributes[0]).toMatchObject({ fileName: 'custom-name.mp4' });
+
+      expect(result).toEqual({
+        message_id: 55,
+        file_name: 'custom-name.mp4',
+        size: 2048,
+        mime_type: 'video/mp4',
+        date: 1700000000,
+      });
+    });
+
+    it('falls back to the original file name when no custom file_name is given', async () => {
+      mockClient.sendFile.mockResolvedValue(makeMessage({ id: 56 }));
+
+      await uploadVideo('me', {
+        buffer: Buffer.from('video-bytes'),
+        originalFileName: 'original.mp4',
+      });
+
+      const options = mockClient.sendFile.mock.calls[0][1];
+      expect(options.file).toMatchObject({ name: 'original.mp4' });
+      expect(options.thumb).toBeUndefined();
+      expect(options.caption).toBeUndefined();
+    });
+
+    it('clears all caches after a successful upload', async () => {
+      mockClient.getMessages.mockResolvedValue([makeMessage({ id: 1 })]);
+      await getVideoMessage('chatCache2', 1);
+      expect(mockClient.getMessages).toHaveBeenCalledTimes(1);
+
+      mockClient.sendFile.mockResolvedValue(makeMessage({ id: 57 }));
+      await uploadVideo('me', { buffer: Buffer.from('x'), originalFileName: 'a.mp4' });
+
+      await getVideoMessage('chatCache2', 1);
+      expect(mockClient.getMessages).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('editVideoCaption', () => {
+    it('calls editMessage with the message id and new caption', async () => {
+      mockClient.editMessage.mockResolvedValue(makeMessage());
+      await editVideoCaption('chat1', 10, 'nova descrição');
+      expect(mockClient.editMessage).toHaveBeenCalledWith('chat1', { message: 10, text: 'nova descrição' });
+    });
+
+    it('clears all caches after a successful edit', async () => {
+      mockClient.getMessages.mockResolvedValue([makeMessage({ id: 2 })]);
+      await getVideoMessage('chatCache3', 2);
+      expect(mockClient.getMessages).toHaveBeenCalledTimes(1);
+
+      mockClient.editMessage.mockResolvedValue(makeMessage());
+      await editVideoCaption('chatCache3', 2, 'nova descrição');
+
+      await getVideoMessage('chatCache3', 2);
+      expect(mockClient.getMessages).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('deleteVideoMessage', () => {
+    it('calls deleteMessages with the message id and revoke: true', async () => {
+      mockClient.deleteMessages.mockResolvedValue(undefined);
+      await deleteVideoMessage('chat1', 10);
+      expect(mockClient.deleteMessages).toHaveBeenCalledWith('chat1', [10], { revoke: true });
+    });
+
+    it('clears all caches after a successful delete', async () => {
+      mockClient.getMessages.mockResolvedValue([makeMessage({ id: 3 })]);
+      await getVideoMessage('chatCache4', 3);
+      expect(mockClient.getMessages).toHaveBeenCalledTimes(1);
+
+      mockClient.deleteMessages.mockResolvedValue(undefined);
+      await deleteVideoMessage('chatCache4', 3);
+
+      await getVideoMessage('chatCache4', 3);
+      expect(mockClient.getMessages).toHaveBeenCalledTimes(2);
     });
   });
 });

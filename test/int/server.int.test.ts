@@ -7,6 +7,18 @@ jest.mock('@/telegram-client', () => ({
   getVideoMessage: jest.fn().mockRejectedValue(new Error('not used in these tests')),
   listAllVideos: jest.fn().mockResolvedValue([]),
   listChannels: jest.fn().mockResolvedValue([]),
+  getChannelInfo: jest.fn().mockResolvedValue({
+    channel_id: '-1001',
+    channel_title: 'Channel',
+    description: null,
+    username: null,
+    type: 'channel',
+    participants_count: null,
+    admins_count: null,
+    kicked_count: null,
+    banned_count: null,
+    online_count: null,
+  }),
   listVideos: jest.fn().mockResolvedValue({ items: [], total: 0 }),
   editVideoCaption: jest.fn().mockResolvedValue(undefined),
 }));

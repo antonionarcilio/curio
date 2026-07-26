@@ -70,6 +70,19 @@ type ChannelListEntry = {
   channel_title: string;
 };
 
+type ChannelInfo = {
+  channel_id: string;
+  channel_title: string;
+  description: string | null;
+  username: string | null;
+  type: 'channel' | 'supergroup';
+  participants_count: number | null;
+  admins_count: number | null;
+  kicked_count: number | null;
+  banned_count: number | null;
+  online_count: number | null;
+};
+
 type VideoFetchParams = { limit: number; offset: number };
 
 type VideoFetchResult = { items: ChannelVideoItem[]; total: number };
@@ -158,6 +171,19 @@ function buildChannelVideoItem(message: Api.Message, video: VideoDocument): Chan
     ...extractVideoAttributes(video.document),
     ...extractThumbnailInfo(video.document),
   };
+}
+
+function optionalNumber(value: unknown): number | null {
+  return typeof value === 'number' ? value : null;
+}
+
+function optionalString(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+function valueToString(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  return value.toString();
 }
 
 // TeleProto só resolve um chatId numérico bruto pra getMessages/getEntity se o
@@ -283,6 +309,49 @@ async function listChannelsUncached(limit: number): Promise<ChannelListEntry[]> 
 }
 
 const listChannels = withCache(config.cacheTtlMs, (limit: number) => `${limit}`, listChannelsUncached);
+
+async function getChannelInfoUncached(channelId: string): Promise<ChannelInfo> {
+  const entity = (await resolveEntity(channelId)) as Api.TypeEntityLike & {
+    className?: string;
+    id?: unknown;
+    title?: string;
+    username?: string;
+    broadcast?: boolean;
+    megagroup?: boolean;
+  };
+
+  if (entity.className !== 'Channel') {
+    throw new Error(`A entidade "${channelId}" não é um canal ou supergrupo do Telegram`);
+  }
+
+  const tg = await ensureConnected();
+  const full = (await tg.api.channels.getFullChannel({ channel: entity })) as {
+    fullChat?: {
+      about?: string;
+      participantsCount?: number;
+      adminsCount?: number;
+      kickedCount?: number;
+      bannedCount?: number;
+      onlineCount?: number;
+    };
+  };
+  const fullChat = full.fullChat ?? {};
+
+  return {
+    channel_id: valueToString(entity.id) ?? channelId,
+    channel_title: entity.title || entity.username || channelId,
+    description: optionalString(fullChat.about),
+    username: optionalString(entity.username),
+    type: entity.megagroup ? 'supergroup' : 'channel',
+    participants_count: optionalNumber(fullChat.participantsCount),
+    admins_count: optionalNumber(fullChat.adminsCount),
+    kicked_count: optionalNumber(fullChat.kickedCount),
+    banned_count: optionalNumber(fullChat.bannedCount),
+    online_count: optionalNumber(fullChat.onlineCount),
+  };
+}
+
+const getChannelInfo = withCache(config.cacheTtlMs, (channelId: string) => channelId, getChannelInfoUncached);
 
 async function getChannelVideosUncached(chatId: string, params: VideoFetchParams): Promise<ChannelVideosResult> {
   const entity = (await resolveEntity(chatId)) as { title?: string; username?: string };
@@ -460,6 +529,7 @@ export {
   deleteVideoMessage,
   editVideoCaption,
   ensureConnected,
+  getChannelInfo,
   getChannelVideos,
   getVideoMessage,
   getVideoThumbnail,
@@ -469,4 +539,4 @@ export {
   MAX_UPLOAD_SIZE_BYTES,
   uploadVideo,
 };
-export type { ChannelVideoItem, VideoFetchParams, VideoListEntry, VideoListItem, VideoThumbnail };
+export type { ChannelInfo, ChannelVideoItem, VideoFetchParams, VideoListEntry, VideoListItem, VideoThumbnail };

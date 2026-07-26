@@ -9,9 +9,10 @@ aceita o header privado ou uma URL assinada com `exp`/`sig`, escopada ao
 [`../README.md`](../README.md#autenticação) para a explicação completa.
 
 As rotas de leitura (`/api/v1/videos/grouped`, `/api/v1/videos/by/:chatId`,
-`/api/v1/channels` e a resolução de metadados usada por stream/download)
-usam cache em memória com TTL configurável (`CACHE_TTL_MS`, default 3 min).
-Use `POST /api/v1/cache/purge` para forçar dados frescos.
+`/api/v1/channels`, `/api/v1/channel/:channel_id` e a resolução de metadados
+usada por stream/download) usam cache em memória com TTL configurável
+(`CACHE_TTL_MS`, default 3 min). Use `POST /api/v1/cache/purge` para forçar
+dados frescos.
 
 ## Paginação
 
@@ -38,6 +39,20 @@ memória e só então pagina. Em
   paginação, `{ data, page, per_page, total, total_pages }`.
 - **Nomenclatura**: usa `channel_id`/`channel_title` porque só retorna peers
   do tipo `Channel`.
+
+## `GET /api/v1/channel/:channel_id`
+
+- **Propósito**: retorna detalhes básicos de um canal/supergrupo específico.
+- **Acesso**: Privada.
+- **Path params**: `channel_id`, aceitando o mesmo padrão das rotas por chat:
+  ID numérico, `-100...`, `@username` ou outro peer resolvível pela conta.
+- **Query params**: nenhum. Esta rota é uma exceção à paginação porque sempre
+  retorna exatamente um item.
+- **Resposta**: `{ channel_id, channel_title, description, username, type,
+  participants_count, admins_count, kicked_count, banned_count, online_count }`.
+  `type` é `"channel"` ou `"supergroup"`; campos não informados pelo Telegram
+  retornam `null`.
+- **Cache**: usa o mesmo TTL das demais rotas de leitura.
 
 ## `GET /api/v1/videos/grouped`
 

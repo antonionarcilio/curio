@@ -12,6 +12,7 @@ const ORDER = [
   'update-video.e2e.test.ts',
   'videos-grouped.e2e.test.ts',
   'list-channels.e2e.test.ts',
+  'channel-detail.e2e.test.ts',
   'videos-by-chat.e2e.test.ts',
   'stream-video.e2e.test.ts',
   'download-video.e2e.test.ts',

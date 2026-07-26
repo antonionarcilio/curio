@@ -1,0 +1,12 @@
+services:
+  app:
+    build:
+      target: dev
+    volumes:
+      - ./src:/app/src
+      - ./tsconfig.json:/app/tsconfig.json:ro
+      - ./tsconfig.jest.json:/app/tsconfig.jest.json:ro
+      - node_modules:/app/node_modules
+
+volumes:
+  node_modules:

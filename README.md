@@ -68,6 +68,92 @@ no modo estrito: o header é obrigatório e nada é preenchido automaticamente �
 por segurança, o servidor nunca autentica sozinho a menos que você diga
 explicitamente que está em dev.
 
+## Docker
+
+Por padrão, `docker compose up` sobe o ambiente de **produção** (`target: prod`
+do `Dockerfile`, sem hot reload):
+
+```bash
+docker compose up --build
+```
+
+**Desenvolvimento** (hot reload via `nodemon`, montando `src/` do host) exige
+combinar o arquivo extra `docker-compose.dev.yml`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+Produção também pode buildar localmente a partir do `Dockerfile`
+(`target: prod`), em vez de usar a imagem do GHCR:
+
+```bash
+docker build --target prod -t telegram-cdn:prod .
+docker run --env-file .env -p 8787:8787 telegram-cdn:prod
+```
+
+### Rodando a imagem publicada no GHCR
+
+```bash
+docker pull ghcr.io/antonionarcilio/telegram-cdn:latest
+docker run --env-file .env -p 8787:8787 ghcr.io/antonionarcilio/telegram-cdn:latest
+```
+
+- **`--env-file .env`**: a imagem não embute nenhuma credencial — precisa do
+  seu `.env` local com `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`,
+  `TELEGRAM_SESSION` e `ACCESS_TOKEN` já preenchidos (ver "Configuração
+  inicial").
+- **`-p 8787:8787`**: mapeia a porta do host para a do container. Se o seu
+  `.env` define `PORT` com outro valor, ajuste os dois lados (ex:
+  `-p 9000:9000` com `PORT=9000` no `.env`).
+- Essa imagem é sempre `target: prod` — roda `node dist/server.js` direto,
+  sem hot reload nem devDependencies.
+- Pacote privado: se `docker pull` retornar `unauthorized`/`denied`,
+  autentique antes com `docker login ghcr.io -u antonionarcilio` (um PAT com
+  escopo `read:packages` já é suficiente para pull).
+- Para rodar em background, adicione `-d`; para nomear o container (facilita
+  `docker logs`/`docker stop` depois), adicione `--name telegram-cdn`:
+
+  ```bash
+  docker run -d --name telegram-cdn --env-file .env -p 8787:8787 \
+    ghcr.io/antonionarcilio/telegram-cdn:latest
+  ```
+
+### Publicação da imagem (GHCR)
+
+A imagem de produção é publicada em `ghcr.io/antonionarcilio/telegram-cdn`,
+um pacote **privado** (herda a visibilidade do repositório).
+
+**Automática**: todo push na branch `master` dispara
+`.github/workflows/docker-publish.yml`, que builda a imagem (`target: prod`)
+e publica duas tags: `latest` e `sha-<short-sha>` do commit. O workflow usa
+apenas o `GITHUB_TOKEN` do próprio Actions (escopo `packages: write`) — não
+precisa de nenhum secret adicional configurado no repositório.
+
+**Manual**: use o script `scripts/publish-image.sh`, que builda a imagem
+localmente e publica no GHCR sem precisar esperar um push em `master`:
+
+```bash
+# usa o short SHA do commit atual como tag (+ "latest")
+./scripts/publish-image.sh
+
+# ou informe uma tag específica
+./scripts/publish-image.sh v1.2.3
+```
+
+Pré-requisito: estar autenticado no GHCR. Passe as credenciais como
+parâmetros (`--username`/`-u` e `--token`/`-t`, um Personal Access Token
+com escopo `write:packages`) e o script faz o login sozinho antes do build:
+
+```bash
+./scripts/publish-image.sh --username antonionarcilio --token ghp_xxx
+./scripts/publish-image.sh --username antonionarcilio --token ghp_xxx v1.2.3
+```
+
+Se preferir não passar o token pelo script (ele fica visível no histórico
+do shell e em `ps` durante a execução), rode `docker login ghcr.io`
+manualmente antes e chame o script sem `--username`/`--token`.
+
 ## Rotas
 
 O servidor expõe rotas versionadas em `/api/v1`: `channels`,

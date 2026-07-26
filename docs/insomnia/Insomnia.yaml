@@ -10,7 +10,7 @@ meta:
 
     Configure `BASE_URL` (default `http://localhost:8787`) e envie `Authorization: Bearer <ACCESS_TOKEN>` em todas as rotas, exceto `video/stream` e `video/dl` quando acessadas com URL assinada (`?exp=&sig=`).
 
-    Cache: `/api/v1/videos/grouped`, `/api/v1/videos/by/:chatId`, `/api/v1/channels` e a resolução de metadados de stream/download usam cache em memória com TTL. Use `POST /api/v1/cache/purge` para forçar dados frescos.
+    Cache: `/api/v1/videos/grouped`, `/api/v1/videos/by/:chatId`, `/api/v1/channels`, `/api/v1/channel/:channel_id` e a resolução de metadados de stream/download usam cache em memória com TTL. Use `POST /api/v1/cache/purge` para forçar dados frescos.
 
     Documentação completa: `docs/ROUTES.md`.
 collection:
@@ -58,6 +58,24 @@ collection:
         send: true
         store: true
       rebuildPath: true
+  - url: '{{ _.BASE_URL }}/api/v1/channel/-1004325653681'
+    name: channel detail
+    meta:
+      id: req_channel_detail_v1
+      created: 1784930998785
+      modified: 1784933376600
+      isPrivate: false
+      description: |-
+        Retorna detalhes básicos de um canal/supergrupo específico.
+
+        Acesso: Privada.
+        Path param: `channel_id` aceita ID numérico, `-100...`, `@username` ou outro peer resolvível pela conta.
+        Query params: nenhum; retorna exatamente um item.
+        Resposta: `{ channel_id, channel_title, description, username, type, participants_count, admins_count, kicked_count, banned_count, online_count }`.
+      sortKey: -1784931209193
+    method: GET
+    parameters: []
+    settings: *settings
   - url: '{{ _.BASE_URL }}/api/v1/videos/grouped'
     name: videos grouped
     meta:

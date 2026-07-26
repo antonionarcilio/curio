@@ -3,6 +3,11 @@ const mockClient = {
   getMessages: jest.fn(),
   getDialogs: jest.fn(),
   getEntity: jest.fn(),
+  api: {
+    channels: {
+      getFullChannel: jest.fn(),
+    },
+  },
   sendFile: jest.fn(),
   uploadFile: jest.fn(),
   editMessage: jest.fn(),
@@ -37,6 +42,7 @@ import {
   deleteVideoMessage,
   editVideoCaption,
   ensureConnected,
+  getChannelInfo,
   getChannelVideos,
   getVideoMessage,
   getVideoThumbnail,
@@ -349,6 +355,93 @@ describe('telegram-client', () => {
       mockClient.getDialogs.mockResolvedValue([{ id: undefined, isChannel: true, title: undefined, name: undefined }]);
       const channels = await listChannels(100);
       expect(channels).toEqual([{ channel_id: '', channel_title: '' }]);
+    });
+  });
+
+  describe('getChannelInfo', () => {
+    it('returns basic channel details with the Telegram about field as description', async () => {
+      mockClient.getEntity.mockResolvedValue({
+        className: 'Channel',
+        id: -1004325653681,
+        title: 'Smoke Tests',
+        username: 'smoke_tests',
+        broadcast: true,
+      });
+      mockClient.api.channels.getFullChannel.mockResolvedValue({
+        fullChat: {
+          className: 'ChannelFull',
+          about: 'Canal usado nos testes e2e',
+          participantsCount: 12,
+          adminsCount: 2,
+          kickedCount: 1,
+          bannedCount: 0,
+          onlineCount: 3,
+        },
+      });
+
+      const info = await getChannelInfo('-1004325653681');
+
+      expect(info).toEqual({
+        channel_id: '-1004325653681',
+        channel_title: 'Smoke Tests',
+        description: 'Canal usado nos testes e2e',
+        username: 'smoke_tests',
+        type: 'channel',
+        participants_count: 12,
+        admins_count: 2,
+        kicked_count: 1,
+        banned_count: 0,
+        online_count: 3,
+      });
+    });
+
+    it('returns null for optional details that Telegram omits and classifies megagroups', async () => {
+      mockClient.getEntity.mockResolvedValue({
+        className: 'Channel',
+        id: -100111,
+        title: 'Grupo',
+        megagroup: true,
+      });
+      mockClient.api.channels.getFullChannel.mockResolvedValue({
+        fullChat: {
+          className: 'ChannelFull',
+          about: '',
+        },
+      });
+
+      const info = await getChannelInfo('-100111');
+
+      expect(info).toEqual({
+        channel_id: '-100111',
+        channel_title: 'Grupo',
+        description: null,
+        username: null,
+        type: 'supergroup',
+        participants_count: null,
+        admins_count: null,
+        kicked_count: null,
+        banned_count: null,
+        online_count: null,
+      });
+    });
+
+    it('caches channel info for the same channel_id', async () => {
+      mockClient.getEntity.mockResolvedValue({ className: 'Channel', id: -100222, title: 'Cached', broadcast: true });
+      mockClient.api.channels.getFullChannel.mockResolvedValue({
+        fullChat: { className: 'ChannelFull', about: 'cache' },
+      });
+
+      await getChannelInfo('-100222');
+      await getChannelInfo('-100222');
+
+      expect(mockClient.api.channels.getFullChannel).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects with a clear error when the resolved entity is not a channel', async () => {
+      mockClient.getEntity.mockResolvedValue({ className: 'User', id: 10, firstName: 'Alice' });
+
+      await expect(getChannelInfo('alice')).rejects.toThrow(/não é um canal/);
+      expect(mockClient.api.channels.getFullChannel).not.toHaveBeenCalled();
     });
   });
 

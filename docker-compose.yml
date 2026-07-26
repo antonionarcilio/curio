@@ -1,0 +1,8 @@
+services:
+  app:
+    build:
+      context: .
+      target: prod
+    env_file: .env
+    ports:
+      - "${PORT:-8787}:${PORT:-8787}"

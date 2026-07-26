@@ -84,19 +84,40 @@ combinar o arquivo extra `docker-compose.dev.yml`:
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
 
-Produção também pode usar a imagem publicada no GHCR diretamente (privada —
-requer estar autenticado com `docker login ghcr.io`):
-
-```bash
-docker run --env-file .env -p 8787:8787 ghcr.io/antonionarcilio/telegram-cdn:latest
-```
-
-Ou buildando localmente a partir do `Dockerfile` (`target: prod`):
+Produção também pode buildar localmente a partir do `Dockerfile`
+(`target: prod`), em vez de usar a imagem do GHCR:
 
 ```bash
 docker build --target prod -t telegram-cdn:prod .
 docker run --env-file .env -p 8787:8787 telegram-cdn:prod
 ```
+
+### Rodando a imagem publicada no GHCR
+
+```bash
+docker pull ghcr.io/antonionarcilio/telegram-cdn:latest
+docker run --env-file .env -p 8787:8787 ghcr.io/antonionarcilio/telegram-cdn:latest
+```
+
+- **`--env-file .env`**: a imagem não embute nenhuma credencial — precisa do
+  seu `.env` local com `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`,
+  `TELEGRAM_SESSION` e `ACCESS_TOKEN` já preenchidos (ver "Configuração
+  inicial").
+- **`-p 8787:8787`**: mapeia a porta do host para a do container. Se o seu
+  `.env` define `PORT` com outro valor, ajuste os dois lados (ex:
+  `-p 9000:9000` com `PORT=9000` no `.env`).
+- Essa imagem é sempre `target: prod` — roda `node dist/server.js` direto,
+  sem hot reload nem devDependencies.
+- Pacote privado: se `docker pull` retornar `unauthorized`/`denied`,
+  autentique antes com `docker login ghcr.io -u antonionarcilio` (um PAT com
+  escopo `read:packages` já é suficiente para pull).
+- Para rodar em background, adicione `-d`; para nomear o container (facilita
+  `docker logs`/`docker stop` depois), adicione `--name telegram-cdn`:
+
+  ```bash
+  docker run -d --name telegram-cdn --env-file .env -p 8787:8787 \
+    ghcr.io/antonionarcilio/telegram-cdn:latest
+  ```
 
 ### Publicação da imagem (GHCR)
 

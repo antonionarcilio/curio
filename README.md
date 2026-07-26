@@ -68,6 +68,71 @@ no modo estrito: o header é obrigatório e nada é preenchido automaticamente �
 por segurança, o servidor nunca autentica sozinho a menos que você diga
 explicitamente que está em dev.
 
+## Docker
+
+Por padrão, `docker compose up` sobe o ambiente de **produção** (`target: prod`
+do `Dockerfile`, sem hot reload):
+
+```bash
+docker compose up --build
+```
+
+**Desenvolvimento** (hot reload via `nodemon`, montando `src/` do host) exige
+combinar o arquivo extra `docker-compose.dev.yml`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+Produção também pode usar a imagem publicada no GHCR diretamente (privada —
+requer estar autenticado com `docker login ghcr.io`):
+
+```bash
+docker run --env-file .env -p 8787:8787 ghcr.io/antonionarcilio/telegram-cdn:latest
+```
+
+Ou buildando localmente a partir do `Dockerfile` (`target: prod`):
+
+```bash
+docker build --target prod -t telegram-cdn:prod .
+docker run --env-file .env -p 8787:8787 telegram-cdn:prod
+```
+
+### Publicação da imagem (GHCR)
+
+A imagem de produção é publicada em `ghcr.io/antonionarcilio/telegram-cdn`,
+um pacote **privado** (herda a visibilidade do repositório).
+
+**Automática**: todo push na branch `master` dispara
+`.github/workflows/docker-publish.yml`, que builda a imagem (`target: prod`)
+e publica duas tags: `latest` e `sha-<short-sha>` do commit. O workflow usa
+apenas o `GITHUB_TOKEN` do próprio Actions (escopo `packages: write`) — não
+precisa de nenhum secret adicional configurado no repositório.
+
+**Manual**: use o script `scripts/publish-image.sh`, que builda a imagem
+localmente e publica no GHCR sem precisar esperar um push em `master`:
+
+```bash
+# usa o short SHA do commit atual como tag (+ "latest")
+./scripts/publish-image.sh
+
+# ou informe uma tag específica
+./scripts/publish-image.sh v1.2.3
+```
+
+Pré-requisito: estar autenticado no GHCR. Passe as credenciais como
+parâmetros (`--username`/`-u` e `--token`/`-t`, um Personal Access Token
+com escopo `write:packages`) e o script faz o login sozinho antes do build:
+
+```bash
+./scripts/publish-image.sh --username antonionarcilio --token ghp_xxx
+./scripts/publish-image.sh --username antonionarcilio --token ghp_xxx v1.2.3
+```
+
+Se preferir não passar o token pelo script (ele fica visível no histórico
+do shell e em `ps` durante a execução), rode `docker login ghcr.io`
+manualmente antes e chame o script sem `--username`/`--token`.
+
 ## Rotas
 
 O servidor expõe rotas versionadas em `/api/v1`: `channels`,

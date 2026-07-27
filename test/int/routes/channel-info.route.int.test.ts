@@ -18,7 +18,7 @@ describe('GET /channel/:channel_id', () => {
 
   it('returns basic details for the requested channel', async () => {
     mockGetChannelInfo.mockResolvedValue({
-      channel_id: '-1004325653681',
+      channel_id: '-1003915432695',
       channel_title: 'Smoke Tests',
       description: 'Canal usado nos testes e2e',
       username: 'smoke_tests',
@@ -30,12 +30,12 @@ describe('GET /channel/:channel_id', () => {
       online_count: 3,
     });
 
-    const res = await request(buildApp()).get('/channel/-1004325653681');
+    const res = await request(buildApp()).get('/channel/-1003915432695');
 
     expect(res.status).toBe(200);
-    expect(mockGetChannelInfo).toHaveBeenCalledWith('-1004325653681');
+    expect(mockGetChannelInfo).toHaveBeenCalledWith('-1003915432695');
     expect(res.body).toEqual({
-      channel_id: '-1004325653681',
+      channel_id: '-1003915432695',
       channel_title: 'Smoke Tests',
       description: 'Canal usado nos testes e2e',
       username: 'smoke_tests',
@@ -58,7 +58,7 @@ describe('GET /channel/:channel_id', () => {
   it('returns 500 with the error message when getChannelInfo rejects', async () => {
     mockGetChannelInfo.mockRejectedValue(new Error('boom'));
 
-    const res = await request(buildApp()).get('/channel/-1004325653681');
+    const res = await request(buildApp()).get('/channel/-1003915432695');
 
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: 'boom' });

@@ -366,7 +366,7 @@ describe('telegram-client', () => {
     it('returns basic channel details with the Telegram about field as description', async () => {
       mockClient.getEntity.mockResolvedValue({
         className: 'Channel',
-        id: -1004325653681,
+        id: -1003915432695,
         title: 'Smoke Tests',
         username: 'smoke_tests',
         broadcast: true,
@@ -383,10 +383,10 @@ describe('telegram-client', () => {
         },
       });
 
-      const info = await getChannelInfo('-1004325653681');
+      const info = await getChannelInfo('-1003915432695');
 
       expect(info).toEqual({
-        channel_id: '-1004325653681',
+        channel_id: '-1003915432695',
         channel_title: 'Smoke Tests',
         description: 'Canal usado nos testes e2e',
         username: 'smoke_tests',
@@ -667,7 +667,7 @@ describe('telegram-client', () => {
 
     it('warms the entity cache via getDialogs and retries when getEntity fails cold, then succeeds', async () => {
       mockClient.getEntity.mockRejectedValueOnce(new Error('Could not find the input entity for {}'));
-      mockClient.getEntity.mockResolvedValueOnce({ id: -1004325653681 });
+      mockClient.getEntity.mockResolvedValueOnce({ id: -1003915432695 });
       mockClient.getDialogs.mockResolvedValue([]);
       mockClient.sendFile.mockResolvedValue(makeMessage({ id: 58 }));
 
@@ -711,7 +711,7 @@ describe('telegram-client', () => {
 
     it('warms the entity cache via getDialogs and retries when getEntity fails cold, then succeeds', async () => {
       mockClient.getEntity.mockRejectedValueOnce(new Error('Could not find the input entity for {}'));
-      mockClient.getEntity.mockResolvedValueOnce({ id: -1004325653681 });
+      mockClient.getEntity.mockResolvedValueOnce({ id: -1003915432695 });
       mockClient.getDialogs.mockResolvedValue([]);
       mockClient.editMessage.mockResolvedValue(makeMessage());
 
@@ -755,7 +755,7 @@ describe('telegram-client', () => {
 
     it('warms the entity cache via getDialogs and retries when getEntity fails cold, then succeeds', async () => {
       mockClient.getEntity.mockRejectedValueOnce(new Error('Could not find the input entity for {}'));
-      mockClient.getEntity.mockResolvedValueOnce({ id: -1004325653681 });
+      mockClient.getEntity.mockResolvedValueOnce({ id: -1003915432695 });
       mockClient.getDialogs.mockResolvedValue([]);
       mockClient.deleteMessages.mockResolvedValue(undefined);
 

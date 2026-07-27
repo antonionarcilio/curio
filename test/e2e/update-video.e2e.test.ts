@@ -1,8 +1,14 @@
 import { client, ensureConnected } from '@/telegram-client';
 import request from 'supertest';
 import { app, authed } from './helpers/http-client';
-import { readFixtureState } from './helpers/shared-state';
-import { EDITED_DESCRIPTION, TARGETS } from './helpers/video-fixture';
+import { uploadTestFixture } from './helpers/upload-fixture';
+import {
+  deleteFixtureViaApi,
+  EDITED_DESCRIPTION,
+  ORIGINAL_DESCRIPTION,
+  TARGETS,
+  TEST_QUEUE_VIDEO_PATH,
+} from './helpers/video-fixture';
 
 beforeAll(() => ensureConnected());
 // destroy() é o shutdown completo do cliente TeleProto; disconnect() pode
@@ -10,23 +16,29 @@ beforeAll(() => ensureConnected());
 afterAll(() => client.destroy());
 
 describe.each(TARGETS)('PATCH /api/v1/video/update/:chatId/:messageId (e2e) — $label', ({ chatId }) => {
-  it('edits the caption of the uploaded fixture', async () => {
-    const fixture = readFixtureState(chatId);
-    if (!fixture) throw new Error(`Fixture ausente para "${chatId}" — upload-video.e2e.test.ts precisa rodar antes`);
+  let messageId: number;
 
-    const res = await authed(request(app).patch(`/api/v1/video/update/${chatId}/${fixture.messageId}`)).send({
+  beforeAll(async () => {
+    const job = await uploadTestFixture(chatId, TEST_QUEUE_VIDEO_PATH, { description: ORIGINAL_DESCRIPTION });
+    if (job.status !== 'completed' || !job.message_id) throw new Error(`Falha ao criar fixture para "${chatId}"`);
+    messageId = job.message_id;
+  });
+
+  afterAll(async () => {
+    if (messageId) await deleteFixtureViaApi(chatId, messageId);
+  });
+
+  it('edits the caption of the uploaded fixture', async () => {
+    const res = await authed(request(app).patch(`/api/v1/video/update/${chatId}/${messageId}`)).send({
       description: EDITED_DESCRIPTION,
     });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ edited: true, chat_id: chatId, message_id: String(fixture.messageId) });
+    expect(res.body).toEqual({ edited: true, chat_id: chatId, message_id: String(messageId) });
   });
 
   it('returns 400 when description is missing', async () => {
-    const fixture = readFixtureState(chatId);
-    if (!fixture) throw new Error(`Fixture ausente para "${chatId}" — upload-video.e2e.test.ts precisa rodar antes`);
-
-    const res = await authed(request(app).patch(`/api/v1/video/update/${chatId}/${fixture.messageId}`)).send({});
+    const res = await authed(request(app).patch(`/api/v1/video/update/${chatId}/${messageId}`)).send({});
 
     expect(res.status).toBe(400);
   });

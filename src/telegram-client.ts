@@ -336,9 +336,14 @@ async function getChannelInfoUncached(channelId: string): Promise<ChannelInfo> {
     };
   };
   const fullChat = full.fullChat ?? {};
+  // entity.id é o ID cru do MTProto (sem o prefixo "-100"); listChannelsUncached
+  // usa dialog.id, que o TeleProto já retorna marcado (Utils.getPeerId com
+  // addMark=true) — sem isso, /channel/:channel_id devolvia um channel_id em
+  // formato diferente do que /channels usa pro mesmo canal.
+  const markedChannelId = valueToString(await tg.getPeerId(entity));
 
   return {
-    channel_id: valueToString(entity.id) ?? channelId,
+    channel_id: markedChannelId ?? valueToString(entity.id) ?? channelId,
     channel_title: entity.title || entity.username || channelId,
     description: optionalString(fullChat.about),
     username: optionalString(entity.username),

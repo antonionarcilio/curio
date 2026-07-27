@@ -1,7 +1,7 @@
 import config from '@/config';
 import type { VideoListItem } from '@/telegram-client';
 
-type UploadJobStatus = 'queued' | 'uploading' | 'completed' | 'error';
+type UploadJobStatus = 'queued' | 'paused' | 'uploading' | 'completed' | 'error' | 'cancelled';
 
 type UploadJob = {
   status: UploadJobStatus;
@@ -9,6 +9,7 @@ type UploadJob = {
   chatId: string;
   result?: VideoListItem & { url: string };
   error?: string;
+  cancelRequested?: boolean;
 };
 
 const jobs = new Map<string, UploadJob>();
@@ -57,5 +58,67 @@ function getJob(jobId: string): UploadJob | undefined {
   return jobs.get(jobId);
 }
 
-export { completeJob, createJob, failJob, getJob, setProgress, startJob };
+// Chamado quando o usuário pede cancelamento. Um job 'queued'/'paused' nunca
+// chega a rodar o upload real, então já é finalizado aqui; um job
+// 'uploading' só recebe a flag — o envio ao Telegram não pode ser abortado
+// em voo, então o job continua 'uploading' até settleUploadJob decidir o
+// que fazer.
+function requestCancel(jobId: string): UploadJob | undefined {
+  const job = jobs.get(jobId);
+  if (!job) return undefined;
+  job.cancelRequested = true;
+  if (job.status === 'queued' || job.status === 'paused') {
+    job.status = 'cancelled';
+    scheduleCleanup(jobId);
+  }
+  return job;
+}
+
+// Só afeta um job que ainda não começou a rodar o upload real — nunca um
+// 'uploading' (não dá pra pausar um envio já em voo, ver requestCancel).
+function pauseJob(jobId: string): UploadJob | undefined {
+  const job = jobs.get(jobId);
+  if (!job) return undefined;
+  if (job.status === 'queued') job.status = 'paused';
+  return job;
+}
+
+function resumeJob(jobId: string): UploadJob | undefined {
+  const job = jobs.get(jobId);
+  if (!job) return undefined;
+  if (job.status === 'paused') job.status = 'queued';
+  return job;
+}
+
+function getJobIdsByStatus(status: UploadJobStatus): string[] {
+  return [...jobs.entries()].filter(([, job]) => job.status === status).map(([jobId]) => jobId);
+}
+
+function isCancelRequested(jobId: string): boolean {
+  return jobs.get(jobId)?.cancelRequested === true;
+}
+
+// Usado depois que um upload que já estava em andamento termina e a
+// mensagem correspondente é apagada do Telegram (soft-cancel).
+function finalizeCancelledJob(jobId: string): void {
+  const job = jobs.get(jobId);
+  if (!job) return;
+  job.status = 'cancelled';
+  scheduleCleanup(jobId);
+}
+
+export {
+  completeJob,
+  createJob,
+  failJob,
+  finalizeCancelledJob,
+  getJob,
+  getJobIdsByStatus,
+  isCancelRequested,
+  pauseJob,
+  requestCancel,
+  resumeJob,
+  setProgress,
+  startJob,
+};
 export type { UploadJob, UploadJobStatus };

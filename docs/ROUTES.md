@@ -132,15 +132,83 @@ memória e só então pagina. Em
 - **Acesso**: Privada.
 - **Query params**: nenhum.
 - **Resposta**: `{ job_id, status, progress }`, onde `status` é
-  `"queued" | "uploading" | "completed" | "error"` e `progress` é uma fração
-  de `0` a `1` (progresso real do envio ao Telegram, via `tg.uploadFile`).
-  Quando `status` é `"completed"`, a resposta também inclui
-  `{ chat_id, message_id, file_name, size, mime_type, date, url }` — o mesmo
-  formato que a antiga resposta síncrona do upload, com `url` apontando para
-  `/api/v1/video/stream/...`. Quando `status` é `"error"`, inclui `error` com
-  a mensagem da falha. Um `job_id` desconhecido ou já expirado retorna `404`.
-- **Retenção**: o resultado de um job concluído/com erro fica disponível por
-  `UPLOAD_PROGRESS_TTL_MINUTES` (default 5) antes de ser limpo da memória.
+  `"queued" | "paused" | "uploading" | "completed" | "error" | "cancelled"` e
+  `progress` é uma fração de `0` a `1` (progresso real do envio ao Telegram,
+  via `tg.uploadFile`). Quando `status` é `"completed"`, a resposta também
+  inclui `{ chat_id, message_id, file_name, size, mime_type, date, url }` — o
+  mesmo formato que a antiga resposta síncrona do upload, com `url`
+  apontando para `/api/v1/video/stream/...`. Quando `status` é `"error"`,
+  inclui `error` com a mensagem da falha. `"paused"` indica que o job foi
+  pausado via `POST /api/v1/video/upload/pause/:jobId` (ou em lote, ver
+  abaixo); `"cancelled"` indica que o job foi cancelado via
+  `POST /api/v1/video/upload/cancel/:jobId`. Um `job_id` desconhecido ou já
+  expirado retorna `404`.
+- **Retenção**: o resultado de um job concluído/com erro/cancelado fica
+  disponível por `UPLOAD_PROGRESS_TTL_MINUTES` (default 5) antes de ser
+  limpo da memória.
+
+## `POST /api/v1/video/upload/cancel/:jobId`
+
+- **Propósito**: cancela um upload iniciado por
+  `POST /api/v1/video/upload/:chatId`.
+- **Acesso**: Privada.
+- **Comportamentos** (não existe forma de abortar `tg.uploadFile`/
+  `tg.sendFile` em voo — o GramJS instalado não expõe nenhum
+  `AbortController`/signal, só o callback `onProgress`):
+  - Job em `queued`: cancelamento imediato, o upload real nunca chega a
+    iniciar. Status final: `cancelled`.
+  - Job em `uploading`: o envio ao Telegram continua até terminar (soft
+    cancel); ao concluir, em vez de responder com o vídeo, o servidor apaga a
+    mensagem recém-criada (`deleteVideoMessage`, mesmo helper usado por
+    `DELETE /api/v1/video/delete/...`) e o job vai para `cancelled`.
+  - Job em `completed`, `error` ou já `cancelled`: `409`, não é possível
+    cancelar um job em estado final.
+- **Resposta**: `200`, `{ job_id, status }`. `status` é `"cancelled"` (job
+  estava `queued`) ou `"uploading"` (cancelamento pendente, aguardando o
+  upload em andamento terminar — consulte
+  `GET /api/v1/video/upload/progress/:jobId` para ver o desfecho final). Um
+  `job_id` desconhecido retorna `404`.
+
+## `POST /api/v1/video/upload/pause/:jobId`
+
+- **Propósito**: pausa um upload que ainda está esperando vaga na fila
+  (`status: "queued"`), sem tirá-lo definitivamente da fila. Só é possível
+  pausar jobs `queued` — o envio real (`tg.uploadFile`/`tg.sendFile`) não
+  pode ser pausado depois de começar, pela mesma razão descrita em
+  `POST /api/v1/video/upload/cancel/:jobId`.
+- **Acesso**: Privada.
+- **Comportamento**: um job `paused` fica de fora da disputa por vagas de
+  `UPLOAD_CONCURRENCY_LIMIT` até ser retomado — mesmo que uma vaga abra
+  enquanto ele está pausado, jobs atrás dele na fila passam na frente.
+- **Resposta**: `200`, `{ job_id, status: "paused" }`. `404` se o `job_id`
+  não existe; `409` se o job não estiver em `queued` (já `uploading`,
+  `paused`, ou em estado final).
+
+## `POST /api/v1/video/upload/resume/:jobId`
+
+- **Propósito**: retoma um job pausado por
+  `POST /api/v1/video/upload/pause/:jobId` (ou pelo bulk abaixo), devolvendo
+  ele para `queued` e reconsiderando-o para a próxima vaga livre.
+- **Acesso**: Privada.
+- **Resposta**: `200`, `{ job_id, status: "queued" }`. `404` se o `job_id`
+  não existe; `409` se o job não estiver em `paused`.
+
+## `POST /api/v1/video/upload/pause`
+
+- **Propósito**: pausa, de uma vez, todo job que estiver `queued` no momento
+  da chamada. Não é um modo "pausar uploads futuros" — jobs que entrarem na
+  fila depois dessa chamada não são afetados.
+- **Acesso**: Privada.
+- **Resposta**: `200`, `{ paused_job_ids: string[] }` com os `job_id`s
+  efetivamente pausados (pode ser `[]` se não havia nenhum `queued`).
+
+## `POST /api/v1/video/upload/resume`
+
+- **Propósito**: retoma, de uma vez, todo job que estiver `paused` no
+  momento da chamada.
+- **Acesso**: Privada.
+- **Resposta**: `200`, `{ resumed_job_ids: string[] }` com os `job_id`s
+  efetivamente retomados (pode ser `[]` se não havia nenhum `paused`).
 
 ## `PATCH /api/v1/video/update/:chatId/:messageId`
 

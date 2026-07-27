@@ -1,20 +1,31 @@
 import request from 'supertest';
 
 const mockUploadVideo = jest.fn();
+const mockDeleteVideoMessage = jest.fn();
 
 // Limite pequeno só pra tornar o teste de rejeição por tamanho determinístico
 // e barato (o limite real, MAX_UPLOAD_SIZE_BYTES = 2GB, tornaria o teste caro
 // de simular); os outros testes deste arquivo usam buffers bem menores que 20.
 jest.mock('@/telegram-client', () => ({
   uploadVideo: mockUploadVideo,
+  deleteVideoMessage: mockDeleteVideoMessage,
   MAX_UPLOAD_SIZE_BYTES: 20,
 }));
 
+import cancelRouter from '@/routes/video/upload-cancel/route';
+import pauseAllRouter from '@/routes/video/upload-pause-all/route';
+import pauseRouter from '@/routes/video/upload-pause/route';
+import resumeAllRouter from '@/routes/video/upload-resume-all/route';
+import resumeRouter from '@/routes/video/upload-resume/route';
 import uploadVideoRouter from '@/routes/video/upload/route';
 import { getJob } from '@/services/upload-progress-store';
 import { mountRouter } from '@test/helpers/mount-router';
 
-const buildApp = () => mountRouter(uploadVideoRouter);
+// pauseAllRouter/resumeAllRouter precisam vir antes de uploadVideoRouter —
+// mesma colisão de rota resolvida em src/router.ts (`/video/upload/pause`
+// tem a mesma forma de `/video/upload/:chatId`).
+const buildApp = () =>
+  mountRouter([pauseAllRouter, resumeAllRouter, uploadVideoRouter, cancelRouter, pauseRouter, resumeRouter]);
 
 const uploadedVideo = {
   message_id: 42,
@@ -161,5 +172,114 @@ describe('POST /video/upload/:chatId', () => {
     resolveFirst(uploadedVideo);
     await waitForJobSettled(secondRes.body.job_id);
     expect(getJob(secondRes.body.job_id)?.status).toBe('completed');
+  });
+
+  it('soft-cancels an upload already in progress: deletes the video instead of completing the job', async () => {
+    let resolveUpload!: (value: typeof uploadedVideo) => void;
+    mockUploadVideo.mockImplementationOnce(() => new Promise((resolve) => (resolveUpload = resolve)));
+    mockDeleteVideoMessage.mockResolvedValue(undefined);
+
+    const app = buildApp();
+    const uploadRes = await request(app)
+      .post('/video/upload/me')
+      .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' });
+    const jobId = uploadRes.body.job_id;
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(getJob(jobId)?.status).toBe('uploading');
+
+    const cancelRes = await request(app).post(`/video/upload/cancel/${jobId}`);
+    expect(cancelRes.status).toBe(200);
+    expect(cancelRes.body).toEqual({ job_id: jobId, status: 'uploading' });
+
+    resolveUpload(uploadedVideo);
+    await waitForJobSettled(jobId);
+
+    expect(mockDeleteVideoMessage).toHaveBeenCalledWith('me', uploadedVideo.message_id);
+    expect(getJob(jobId)).toMatchObject({ status: 'cancelled' });
+    expect(getJob(jobId)?.result).toBeUndefined();
+  });
+
+  it('a paused queued job does not start even after a concurrency slot frees up, until resumed', async () => {
+    let resolveFirst!: (value: typeof uploadedVideo) => void;
+    mockUploadVideo.mockImplementationOnce(() => new Promise((resolve) => (resolveFirst = resolve)));
+    mockUploadVideo.mockResolvedValueOnce(uploadedVideo);
+
+    const app = buildApp();
+    const firstRes = await request(app)
+      .post('/video/upload/me')
+      .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' });
+    const secondRes = await request(app)
+      .post('/video/upload/me')
+      .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' });
+    const secondJobId = secondRes.body.job_id;
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(getJob(secondJobId)?.status).toBe('queued');
+
+    const pauseRes = await request(app).post(`/video/upload/pause/${secondJobId}`);
+    expect(pauseRes.status).toBe(200);
+
+    resolveFirst(uploadedVideo);
+    await waitForJobSettled(firstRes.body.job_id);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(getJob(secondJobId)?.status).toBe('paused');
+    expect(mockUploadVideo).toHaveBeenCalledTimes(1);
+
+    const resumeRes = await request(app).post(`/video/upload/resume/${secondJobId}`);
+    expect(resumeRes.status).toBe(200);
+    // O scheduler roda de forma síncrona dentro do POST (a vaga está livre,
+    // o job pega ela na hora) — a resposta precisa refletir o status no
+    // instante do resume ('queued'), não o que o job virou logo em seguida.
+    expect(resumeRes.body).toEqual({ job_id: secondJobId, status: 'queued' });
+
+    await waitForJobSettled(secondJobId);
+    expect(getJob(secondJobId)?.status).toBe('completed');
+    expect(mockUploadVideo).toHaveBeenCalledTimes(2);
+  });
+
+  it('pause-all and resume-all act on every queued/paused job at once', async () => {
+    let resolveFirst!: (value: typeof uploadedVideo) => void;
+    mockUploadVideo.mockImplementationOnce(() => new Promise((resolve) => (resolveFirst = resolve)));
+    mockUploadVideo.mockResolvedValue(uploadedVideo);
+
+    const app = buildApp();
+    const firstRes = await request(app)
+      .post('/video/upload/me')
+      .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' });
+    const secondRes = await request(app)
+      .post('/video/upload/me')
+      .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' });
+    const thirdRes = await request(app)
+      .post('/video/upload/me')
+      .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const pauseAllRes = await request(app).post('/video/upload/pause');
+    expect(pauseAllRes.status).toBe(200);
+    expect(pauseAllRes.body.paused_job_ids).toEqual(
+      expect.arrayContaining([secondRes.body.job_id, thirdRes.body.job_id]),
+    );
+
+    resolveFirst(uploadedVideo);
+    await waitForJobSettled(firstRes.body.job_id);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(getJob(secondRes.body.job_id)?.status).toBe('paused');
+    expect(getJob(thirdRes.body.job_id)?.status).toBe('paused');
+    expect(mockUploadVideo).toHaveBeenCalledTimes(1);
+
+    const resumeAllRes = await request(app).post('/video/upload/resume');
+    expect(resumeAllRes.status).toBe(200);
+    expect(resumeAllRes.body.resumed_job_ids).toEqual(
+      expect.arrayContaining([secondRes.body.job_id, thirdRes.body.job_id]),
+    );
+
+    await waitForJobSettled(secondRes.body.job_id);
+    await waitForJobSettled(thirdRes.body.job_id);
+    expect(getJob(secondRes.body.job_id)?.status).toBe('completed');
+    expect(getJob(thirdRes.body.job_id)?.status).toBe('completed');
   });
 });

@@ -3,8 +3,8 @@ import { client, ensureConnected } from '@/telegram-client';
 import fs from 'fs';
 import request from 'supertest';
 import { app, authed } from './helpers/http-client';
-import { readFixtureState } from './helpers/shared-state';
-import { TARGETS, TEST_VIDEO_PATH } from './helpers/video-fixture';
+import { uploadTestFixture } from './helpers/upload-fixture';
+import { deleteFixtureViaApi, TARGETS, TEST_VIDEO_PATH } from './helpers/video-fixture';
 
 beforeAll(() => ensureConnected());
 // destroy() é o shutdown completo do cliente TeleProto; disconnect() pode
@@ -15,14 +15,19 @@ afterAll(() => client.destroy());
 // só muda o Content-Disposition — full-body byte-a-byte já foi provado lá, aqui
 // só range (evita baixar os ~177MB de novo em toda combinação).
 describe.each(TARGETS)('GET /api/v1/video/dl/:chatId/:messageId (e2e) — $label', ({ chatId }) => {
-  function fixture() {
-    const found = readFixtureState(chatId);
-    if (!found) throw new Error(`Fixture ausente para "${chatId}" — upload-video.e2e.test.ts precisa rodar antes`);
-    return found;
-  }
+  let messageId: number;
+
+  beforeAll(async () => {
+    const job = await uploadTestFixture(chatId, TEST_VIDEO_PATH);
+    if (job.status !== 'completed' || !job.message_id) throw new Error(`Falha ao criar fixture para "${chatId}"`);
+    messageId = job.message_id;
+  });
+
+  afterAll(async () => {
+    if (messageId) await deleteFixtureViaApi(chatId, messageId);
+  });
 
   it('streams a byte-exact partial range with 206, forcing Content-Disposition: attachment', async () => {
-    const { messageId } = fixture();
     const localBytes = fs.readFileSync(TEST_VIDEO_PATH).subarray(0, 65536);
     const size = fs.statSync(TEST_VIDEO_PATH).size;
 
@@ -42,7 +47,6 @@ describe.each(TARGETS)('GET /api/v1/video/dl/:chatId/:messageId (e2e) — $label
   });
 
   it('accepts a signed url with no Authorization header', async () => {
-    const { messageId } = fixture();
     // A assinatura só depende de chatId:messageId:exp, não do prefixo do path
     // — createSignedUrl sempre aponta pra /video/stream/..., então troca o
     // segmento pra exercitar o mesmo bypass na rota de download.
@@ -54,7 +58,6 @@ describe.each(TARGETS)('GET /api/v1/video/dl/:chatId/:messageId (e2e) — $label
   });
 
   it('rejects a tampered signature with 401', async () => {
-    const { messageId } = fixture();
     const signedUrl = createSignedUrl('', chatId, messageId)
       .replace('/video/stream/', '/video/dl/')
       .replace(/sig=[0-9a-f]+/, 'sig=0000000000000000');

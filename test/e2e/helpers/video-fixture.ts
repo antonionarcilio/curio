@@ -1,6 +1,8 @@
 import { deleteVideoMessage } from '@/telegram-client';
 import path from 'path';
 import sharp from 'sharp';
+import request from 'supertest';
+import { app, authed } from './http-client';
 
 // Vídeo real de ~177MB/4K/60fps — bem maior que um fixture sintético, então
 // exercita o streaming em chunks (CHUNK_SIZE de 512KB) de forma realista ao
@@ -15,6 +17,20 @@ const TEST_VIDEO_PATH = path.join(
   'sample',
   '15158346_3840_2160_60fps.mp4',
 );
+// Vídeo real menor (~18MB) usado pelos testes de fila de upload
+// (cancel/pause/resume) — esses testes precisam de vários uploads reais
+// simultâneos pra exercitar concorrência, então usam um arquivo bem menor
+// que TEST_VIDEO_PATH em vez do de 177MB.
+const TEST_QUEUE_VIDEO_PATH = path.join(
+  __dirname,
+  '..',
+  '..',
+  '..',
+  'src',
+  '_assets',
+  'sample',
+  'file_example_MP4_1920_18MG.mp4',
+);
 const TEST_THUMBNAIL_PATH = path.join(
   __dirname,
   '..',
@@ -28,6 +44,9 @@ const TEST_THUMBNAIL_PATH = path.join(
 // Upload não permite mais renomear o arquivo (query param `filename`
 // removida) — o nome final é sempre o nome original do arquivo enviado.
 const TEST_FILE_NAME = path.basename(TEST_VIDEO_PATH);
+// Nome esperado quando o fixture é o vídeo pequeno (TEST_QUEUE_VIDEO_PATH) —
+// usado pelos arquivos que não precisam do vídeo de 177MB.
+const TEST_QUEUE_FILE_NAME = path.basename(TEST_QUEUE_VIDEO_PATH);
 const ORIGINAL_DESCRIPTION = 'legenda original (e2e)';
 const EDITED_DESCRIPTION = 'legenda editada (e2e)';
 
@@ -35,7 +54,7 @@ const EDITED_DESCRIPTION = 'legenda editada (e2e)';
 // valor abaixo é só um fallback de conveniência (ver .env.sample). Precisa do
 // prefixo "-100": um ID positivo puro é interpretado pelo TeleProto como PeerUser
 // (usuário), não PeerChannel, e a resolução de entidade falha.
-const SMOKE_TEST_CHANNEL_ID = process.env.SMOKE_TEST_CHANNEL_ID || '-1004325653681';
+const SMOKE_TEST_CHANNEL_ID = process.env.SMOKE_TEST_CHANNEL_ID || '-1003915432695';
 
 type E2eTarget = { label: string; chatId: string; isChannel: boolean };
 
@@ -59,14 +78,25 @@ async function removeFixture(chatId: string, messageId: number): Promise<void> {
   await deleteVideoMessage(chatId, messageId);
 }
 
+// Limpeza pra qualquer outro arquivo e2e que não testa a rota de delete em
+// si (ex.: os testes de fila de upload) — ao contrário de removeFixture,
+// aqui não existe risco de circularidade, então a limpeza passa pela rota
+// real como qualquer outra ação do teste.
+async function deleteFixtureViaApi(chatId: string, messageId: number): Promise<void> {
+  await authed(request(app).delete(`/api/v1/video/delete/${chatId}/${messageId}`));
+}
+
 export {
   buildSmallThumbnailBuffer,
+  deleteFixtureViaApi,
   EDITED_DESCRIPTION,
   ORIGINAL_DESCRIPTION,
   removeFixture,
   SMOKE_TEST_CHANNEL_ID,
   TARGETS,
   TEST_FILE_NAME,
+  TEST_QUEUE_FILE_NAME,
+  TEST_QUEUE_VIDEO_PATH,
   TEST_THUMBNAIL_PATH,
   TEST_VIDEO_PATH,
 };

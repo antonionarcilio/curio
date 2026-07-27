@@ -58,7 +58,7 @@ collection:
         send: true
         store: true
       rebuildPath: true
-  - url: '{{ _.BASE_URL }}/api/v1/channel/-1004325653681'
+  - url: '{{ _.BASE_URL }}/api/v1/channel/-1003915432695'
     name: channel detail
     meta:
       id: req_channel_detail_v1
@@ -162,7 +162,7 @@ collection:
         description: itens por página, até 100
         disabled: true
     settings: *settings
-  - url: '{{ _.BASE_URL }}/api/v1/video/stream/-1004325653681/6'
+  - url: '{{ _.BASE_URL }}/api/v1/video/stream/-1003915432695/6'
     name: video stream
     meta:
       id: req_video_stream_v1
@@ -186,7 +186,7 @@ collection:
         description: HMAC-SHA256 de chatId:messageId:exp
         disabled: true
     settings: *settings
-  - url: '{{ _.BASE_URL }}/api/v1/video/dl/-1004325653681/6'
+  - url: '{{ _.BASE_URL }}/api/v1/video/dl/-1003915432695/6'
     name: video download
     meta:
       id: req_video_dl_v1
@@ -335,7 +335,7 @@ collection:
       sortKey: -1784934195000
     method: POST
     settings: *settings
-  - url: '{{ _.BASE_URL }}/api/v1/video/update/-1004325653681/6'
+  - url: '{{ _.BASE_URL }}/api/v1/video/update/-1003915432695/6'
     name: update video description
     meta:
       id: req_video_update_v1
@@ -360,7 +360,7 @@ collection:
           "description": "nova descrição"
         }
     settings: *settings
-  - url: '{{ _.BASE_URL }}/api/v1/video/delete/-1004325653681/6'
+  - url: '{{ _.BASE_URL }}/api/v1/video/delete/-1003915432695/6'
     name: delete video
     meta:
       id: req_video_delete_v1

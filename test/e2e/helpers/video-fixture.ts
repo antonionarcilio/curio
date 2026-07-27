@@ -54,7 +54,7 @@ const EDITED_DESCRIPTION = 'legenda editada (e2e)';
 // valor abaixo é só um fallback de conveniência (ver .env.sample). Precisa do
 // prefixo "-100": um ID positivo puro é interpretado pelo TeleProto como PeerUser
 // (usuário), não PeerChannel, e a resolução de entidade falha.
-const SMOKE_TEST_CHANNEL_ID = process.env.SMOKE_TEST_CHANNEL_ID || '-1004325653681';
+const SMOKE_TEST_CHANNEL_ID = process.env.SMOKE_TEST_CHANNEL_ID || '-1003915432695';
 
 type E2eTarget = { label: string; chatId: string; isChannel: boolean };
 

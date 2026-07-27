@@ -253,7 +253,7 @@ collection:
         Consulta o andamento de um upload iniciado por "upload video".
 
         Acesso: Privada.
-        Resposta: `{ job_id, status, progress }`, status é "queued" | "uploading" | "completed" | "error" | "cancelled". Quando "completed", inclui também `{ chat_id, message_id, file_name, size, mime_type, date, url }`; quando "error", inclui `error`. `job_id` desconhecido/expirado retorna 404.
+        Resposta: `{ job_id, status, progress }`, status é "queued" | "paused" | "uploading" | "completed" | "error" | "cancelled". Quando "completed", inclui também `{ chat_id, message_id, file_name, size, mime_type, date, url }`; quando "error", inclui `error`. `job_id` desconhecido/expirado retorna 404.
         Retenção: resultado fica disponível por UPLOAD_PROGRESS_TTL_MINUTES (default 5) após concluir.
       sortKey: -1784934150000
     method: GET
@@ -272,6 +272,67 @@ collection:
         Comportamentos: job "queued" é cancelado na hora (upload nunca inicia); job "uploading" continua até terminar (soft cancel — não dá pra abortar tg.uploadFile/tg.sendFile), e ao concluir a mensagem criada é apagada em vez de exposta como resultado; job em "completed"/"error"/"cancelled" retorna 409.
         Resposta: `200`, `{ job_id, status }`, status é "cancelled" ou "uploading" (cancelamento pendente). `job_id` desconhecido retorna 404.
       sortKey: -1784934175000
+    method: POST
+    settings: *settings
+  - url: '{{ _.BASE_URL }}/api/v1/video/upload/pause/JOB_ID'
+    name: pause upload
+    meta:
+      id: req_video_upload_pause_v1
+      created: 1784934180000
+      modified: 1784934180000
+      isPrivate: false
+      description: |-
+        Pausa um upload que ainda está esperando vaga na fila ("queued"), sem tirá-lo dela. Não é possível pausar um envio já em andamento (mesma limitação do cancel: sem AbortController/signal no GramJS instalado).
+
+        Acesso: Privada.
+        Comportamento: um job "paused" fica de fora da disputa por vagas de UPLOAD_CONCURRENCY_LIMIT até ser retomado — jobs atrás dele na fila passam na frente mesmo com uma vaga livre.
+        Resposta: `200`, `{ job_id, status: "paused" }`. 404 se o job_id não existe; 409 se não estiver "queued".
+      sortKey: -1784934180000
+    method: POST
+    settings: *settings
+  - url: '{{ _.BASE_URL }}/api/v1/video/upload/resume/JOB_ID'
+    name: resume upload
+    meta:
+      id: req_video_upload_resume_v1
+      created: 1784934185000
+      modified: 1784934185000
+      isPrivate: false
+      description: |-
+        Retoma um job pausado por "pause upload" (ou pelo bulk "pause all uploads"), devolvendo-o para "queued".
+
+        Acesso: Privada.
+        Resposta: `200`, `{ job_id, status: "queued" }`. 404 se o job_id não existe; 409 se não estiver "paused".
+      sortKey: -1784934185000
+    method: POST
+    settings: *settings
+  - url: '{{ _.BASE_URL }}/api/v1/video/upload/pause'
+    name: pause all uploads
+    meta:
+      id: req_video_upload_pause_all_v1
+      created: 1784934190000
+      modified: 1784934190000
+      isPrivate: false
+      description: |-
+        Pausa, de uma vez, todo job que estiver "queued" no momento da chamada. Não afeta jobs que entrarem na fila depois.
+
+        Acesso: Privada.
+        Resposta: `200`, `{ paused_job_ids: string[] }` (pode ser `[]`).
+      sortKey: -1784934190000
+    method: POST
+    settings: *settings
+  - url: '{{ _.BASE_URL }}/api/v1/video/upload/resume'
+    name: resume all uploads
+    meta:
+      id: req_video_upload_resume_all_v1
+      created: 1784934195000
+      modified: 1784934195000
+      isPrivate: false
+      description: |-
+        Retoma, de uma vez, todo job que estiver "paused" no momento da chamada.
+
+        Acesso: Privada.
+        Resposta: `200`, `{ resumed_job_ids: string[] }` (pode ser `[]`).
+      sortKey: -1784934195000
     method: POST
     settings: *settings
   - url: '{{ _.BASE_URL }}/api/v1/video/update/-1004325653681/6'

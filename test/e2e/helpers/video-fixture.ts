@@ -1,6 +1,8 @@
 import { deleteVideoMessage } from '@/telegram-client';
 import path from 'path';
 import sharp from 'sharp';
+import request from 'supertest';
+import { app, authed } from './http-client';
 
 // Vídeo real de ~177MB/4K/60fps — bem maior que um fixture sintético, então
 // exercita o streaming em chunks (CHUNK_SIZE de 512KB) de forma realista ao
@@ -14,6 +16,20 @@ const TEST_VIDEO_PATH = path.join(
   '_assets',
   'sample',
   '15158346_3840_2160_60fps.mp4',
+);
+// Vídeo real menor (~18MB) usado pelos testes de fila de upload
+// (cancel/pause/resume) — esses testes precisam de vários uploads reais
+// simultâneos pra exercitar concorrência, então usam um arquivo bem menor
+// que TEST_VIDEO_PATH em vez do de 177MB.
+const TEST_QUEUE_VIDEO_PATH = path.join(
+  __dirname,
+  '..',
+  '..',
+  '..',
+  'src',
+  '_assets',
+  'sample',
+  'file_example_MP4_1920_18MG.mp4',
 );
 const TEST_THUMBNAIL_PATH = path.join(
   __dirname,
@@ -59,14 +75,24 @@ async function removeFixture(chatId: string, messageId: number): Promise<void> {
   await deleteVideoMessage(chatId, messageId);
 }
 
+// Limpeza pra qualquer outro arquivo e2e que não testa a rota de delete em
+// si (ex.: os testes de fila de upload) — ao contrário de removeFixture,
+// aqui não existe risco de circularidade, então a limpeza passa pela rota
+// real como qualquer outra ação do teste.
+async function deleteFixtureViaApi(chatId: string, messageId: number): Promise<void> {
+  await authed(request(app).delete(`/api/v1/video/delete/${chatId}/${messageId}`));
+}
+
 export {
   buildSmallThumbnailBuffer,
+  deleteFixtureViaApi,
   EDITED_DESCRIPTION,
   ORIGINAL_DESCRIPTION,
   removeFixture,
   SMOKE_TEST_CHANNEL_ID,
   TARGETS,
   TEST_FILE_NAME,
+  TEST_QUEUE_VIDEO_PATH,
   TEST_THUMBNAIL_PATH,
   TEST_VIDEO_PATH,
 };

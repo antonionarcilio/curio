@@ -229,6 +229,10 @@ describe('POST /video/upload/:chatId', () => {
 
     const resumeRes = await request(app).post(`/video/upload/resume/${secondJobId}`);
     expect(resumeRes.status).toBe(200);
+    // O scheduler roda de forma síncrona dentro do POST (a vaga está livre,
+    // o job pega ela na hora) — a resposta precisa refletir o status no
+    // instante do resume ('queued'), não o que o job virou logo em seguida.
+    expect(resumeRes.body).toEqual({ job_id: secondJobId, status: 'queued' });
 
     await waitForJobSettled(secondJobId);
     expect(getJob(secondJobId)?.status).toBe('completed');

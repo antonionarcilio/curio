@@ -1,5 +1,15 @@
 import config from '@/config';
-import { completeJob, createJob, failJob, getJob, setProgress, startJob } from '@/services/upload-progress-store';
+import {
+  completeJob,
+  createJob,
+  failJob,
+  finalizeCancelledJob,
+  getJob,
+  isCancelRequested,
+  requestCancel,
+  setProgress,
+  startJob,
+} from '@/services/upload-progress-store';
 
 describe('upload-progress-store', () => {
   beforeEach(() => {
@@ -68,5 +78,60 @@ describe('upload-progress-store', () => {
 
     jest.advanceTimersByTime(config.uploadProgressTtlMs);
     expect(getJob('job7')).toBeUndefined();
+  });
+
+  it('requestCancel immediately finalizes a queued job as cancelled', () => {
+    createJob('job8', 'me');
+    const job = requestCancel('job8');
+
+    expect(job).toMatchObject({ status: 'cancelled', cancelRequested: true });
+    expect(getJob('job8')).toMatchObject({ status: 'cancelled' });
+  });
+
+  it('requestCancel only flags an uploading job, without changing its status', () => {
+    createJob('job9', 'me');
+    startJob('job9');
+    const job = requestCancel('job9');
+
+    expect(job).toMatchObject({ status: 'uploading', cancelRequested: true });
+    expect(getJob('job9')).toMatchObject({ status: 'uploading' });
+  });
+
+  it('requestCancel on an unknown job id returns undefined and is a no-op', () => {
+    expect(requestCancel('unknown')).toBeUndefined();
+  });
+
+  it('isCancelRequested reflects the cancelRequested flag', () => {
+    createJob('job10', 'me');
+    expect(isCancelRequested('job10')).toBe(false);
+
+    requestCancel('job10');
+    expect(isCancelRequested('job10')).toBe(true);
+    expect(isCancelRequested('unknown')).toBe(false);
+  });
+
+  it('finalizeCancelledJob sets the job as cancelled and schedules cleanup', () => {
+    createJob('job11', 'me');
+    startJob('job11');
+    requestCancel('job11');
+    finalizeCancelledJob('job11');
+
+    expect(getJob('job11')).toMatchObject({ status: 'cancelled' });
+
+    jest.advanceTimersByTime(config.uploadProgressTtlMs);
+    expect(getJob('job11')).toBeUndefined();
+  });
+
+  it('finalizeCancelledJob on an unknown job id is a no-op', () => {
+    expect(() => finalizeCancelledJob('unknown')).not.toThrow();
+  });
+
+  it('removes a cancelled job after uploadProgressTtlMs', () => {
+    createJob('job12', 'me');
+    requestCancel('job12');
+    expect(getJob('job12')).toBeDefined();
+
+    jest.advanceTimersByTime(config.uploadProgressTtlMs);
+    expect(getJob('job12')).toBeUndefined();
   });
 });

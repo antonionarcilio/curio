@@ -1,6 +1,6 @@
 import config from '@/config';
-import { completeJob, createJob, failJob, setProgress, startJob } from '@/services/upload-progress-store';
-import { createSignedUrl } from '@/signed-url';
+import { createJob, failJob, getJob, setProgress, startJob } from '@/services/upload-progress-store';
+import { settleUploadJob } from '@/services/videos/upload-job-settlement';
 import { MAX_UPLOAD_SIZE_BYTES, uploadVideo } from '@/telegram-client';
 import { SAFE_MIME_TYPE } from '@/utils/http-response';
 import { randomUUID } from 'crypto';
@@ -78,6 +78,9 @@ router.post('/video/upload/:chatId', parseUpload, (req: Request, res: Response) 
   res.status(202).json({ job_id: jobId, status: 'queued' });
 
   uploadQueue(() => {
+    // Cancelado enquanto ainda 'queued' — nunca chega a gastar banda/slot
+    // de concorrência com um envio que já foi descartado.
+    if (getJob(jobId)?.status === 'cancelled') return undefined;
     startJob(jobId);
     return uploadVideo(chatId, {
       buffer: file.buffer,
@@ -87,7 +90,7 @@ router.post('/video/upload/:chatId', parseUpload, (req: Request, res: Response) 
       onProgress: (progress) => setProgress(jobId, progress),
     });
   })
-    .then((video) => completeJob(jobId, { ...video, url: createSignedUrl(base, chatId, video.message_id) }))
+    .then((video) => video && settleUploadJob(jobId, chatId, base, video))
     .catch((err) => failJob(jobId, (err as Error).message));
 });
 

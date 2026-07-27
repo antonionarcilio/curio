@@ -132,15 +132,40 @@ memória e só então pagina. Em
 - **Acesso**: Privada.
 - **Query params**: nenhum.
 - **Resposta**: `{ job_id, status, progress }`, onde `status` é
-  `"queued" | "uploading" | "completed" | "error"` e `progress` é uma fração
-  de `0` a `1` (progresso real do envio ao Telegram, via `tg.uploadFile`).
-  Quando `status` é `"completed"`, a resposta também inclui
+  `"queued" | "uploading" | "completed" | "error" | "cancelled"` e `progress`
+  é uma fração de `0` a `1` (progresso real do envio ao Telegram, via
+  `tg.uploadFile`). Quando `status` é `"completed"`, a resposta também inclui
   `{ chat_id, message_id, file_name, size, mime_type, date, url }` — o mesmo
   formato que a antiga resposta síncrona do upload, com `url` apontando para
   `/api/v1/video/stream/...`. Quando `status` é `"error"`, inclui `error` com
-  a mensagem da falha. Um `job_id` desconhecido ou já expirado retorna `404`.
-- **Retenção**: o resultado de um job concluído/com erro fica disponível por
-  `UPLOAD_PROGRESS_TTL_MINUTES` (default 5) antes de ser limpo da memória.
+  a mensagem da falha. `"cancelled"` indica que o job foi cancelado via
+  `POST /api/v1/video/upload/cancel/:jobId` (ver abaixo). Um `job_id`
+  desconhecido ou já expirado retorna `404`.
+- **Retenção**: o resultado de um job concluído/com erro/cancelado fica
+  disponível por `UPLOAD_PROGRESS_TTL_MINUTES` (default 5) antes de ser
+  limpo da memória.
+
+## `POST /api/v1/video/upload/cancel/:jobId`
+
+- **Propósito**: cancela um upload iniciado por
+  `POST /api/v1/video/upload/:chatId`.
+- **Acesso**: Privada.
+- **Comportamentos** (não existe forma de abortar `tg.uploadFile`/
+  `tg.sendFile` em voo — o GramJS instalado não expõe nenhum
+  `AbortController`/signal, só o callback `onProgress`):
+  - Job em `queued`: cancelamento imediato, o upload real nunca chega a
+    iniciar. Status final: `cancelled`.
+  - Job em `uploading`: o envio ao Telegram continua até terminar (soft
+    cancel); ao concluir, em vez de responder com o vídeo, o servidor apaga a
+    mensagem recém-criada (`deleteVideoMessage`, mesmo helper usado por
+    `DELETE /api/v1/video/delete/...`) e o job vai para `cancelled`.
+  - Job em `completed`, `error` ou já `cancelled`: `409`, não é possível
+    cancelar um job em estado final.
+- **Resposta**: `200`, `{ job_id, status }`. `status` é `"cancelled"` (job
+  estava `queued`) ou `"uploading"` (cancelamento pendente, aguardando o
+  upload em andamento terminar — consulte
+  `GET /api/v1/video/upload/progress/:jobId` para ver o desfecho final). Um
+  `job_id` desconhecido retorna `404`.
 
 ## `PATCH /api/v1/video/update/:chatId/:messageId`
 

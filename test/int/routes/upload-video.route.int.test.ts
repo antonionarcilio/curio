@@ -1,20 +1,23 @@
 import request from 'supertest';
 
 const mockUploadVideo = jest.fn();
+const mockDeleteVideoMessage = jest.fn();
 
 // Limite pequeno só pra tornar o teste de rejeição por tamanho determinístico
 // e barato (o limite real, MAX_UPLOAD_SIZE_BYTES = 2GB, tornaria o teste caro
 // de simular); os outros testes deste arquivo usam buffers bem menores que 20.
 jest.mock('@/telegram-client', () => ({
   uploadVideo: mockUploadVideo,
+  deleteVideoMessage: mockDeleteVideoMessage,
   MAX_UPLOAD_SIZE_BYTES: 20,
 }));
 
+import cancelRouter from '@/routes/video/upload-cancel/route';
 import uploadVideoRouter from '@/routes/video/upload/route';
 import { getJob } from '@/services/upload-progress-store';
 import { mountRouter } from '@test/helpers/mount-router';
 
-const buildApp = () => mountRouter(uploadVideoRouter);
+const buildApp = () => mountRouter([uploadVideoRouter, cancelRouter]);
 
 const uploadedVideo = {
   message_id: 42,
@@ -161,5 +164,31 @@ describe('POST /video/upload/:chatId', () => {
     resolveFirst(uploadedVideo);
     await waitForJobSettled(secondRes.body.job_id);
     expect(getJob(secondRes.body.job_id)?.status).toBe('completed');
+  });
+
+  it('soft-cancels an upload already in progress: deletes the video instead of completing the job', async () => {
+    let resolveUpload!: (value: typeof uploadedVideo) => void;
+    mockUploadVideo.mockImplementationOnce(() => new Promise((resolve) => (resolveUpload = resolve)));
+    mockDeleteVideoMessage.mockResolvedValue(undefined);
+
+    const app = buildApp();
+    const uploadRes = await request(app)
+      .post('/video/upload/me')
+      .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' });
+    const jobId = uploadRes.body.job_id;
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(getJob(jobId)?.status).toBe('uploading');
+
+    const cancelRes = await request(app).post(`/video/upload/cancel/${jobId}`);
+    expect(cancelRes.status).toBe(200);
+    expect(cancelRes.body).toEqual({ job_id: jobId, status: 'uploading' });
+
+    resolveUpload(uploadedVideo);
+    await waitForJobSettled(jobId);
+
+    expect(mockDeleteVideoMessage).toHaveBeenCalledWith('me', uploadedVideo.message_id);
+    expect(getJob(jobId)).toMatchObject({ status: 'cancelled' });
+    expect(getJob(jobId)?.result).toBeUndefined();
   });
 });

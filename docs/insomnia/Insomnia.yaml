@@ -253,10 +253,26 @@ collection:
         Consulta o andamento de um upload iniciado por "upload video".
 
         Acesso: Privada.
-        Resposta: `{ job_id, status, progress }`, status é "queued" | "uploading" | "completed" | "error". Quando "completed", inclui também `{ chat_id, message_id, file_name, size, mime_type, date, url }`; quando "error", inclui `error`. `job_id` desconhecido/expirado retorna 404.
+        Resposta: `{ job_id, status, progress }`, status é "queued" | "uploading" | "completed" | "error" | "cancelled". Quando "completed", inclui também `{ chat_id, message_id, file_name, size, mime_type, date, url }`; quando "error", inclui `error`. `job_id` desconhecido/expirado retorna 404.
         Retenção: resultado fica disponível por UPLOAD_PROGRESS_TTL_MINUTES (default 5) após concluir.
       sortKey: -1784934150000
     method: GET
+    settings: *settings
+  - url: '{{ _.BASE_URL }}/api/v1/video/upload/cancel/JOB_ID'
+    name: cancel upload
+    meta:
+      id: req_video_upload_cancel_v1
+      created: 1784934175000
+      modified: 1784934175000
+      isPrivate: false
+      description: |-
+        Cancela um upload iniciado por "upload video".
+
+        Acesso: Privada.
+        Comportamentos: job "queued" é cancelado na hora (upload nunca inicia); job "uploading" continua até terminar (soft cancel — não dá pra abortar tg.uploadFile/tg.sendFile), e ao concluir a mensagem criada é apagada em vez de exposta como resultado; job em "completed"/"error"/"cancelled" retorna 409.
+        Resposta: `200`, `{ job_id, status }`, status é "cancelled" ou "uploading" (cancelamento pendente). `job_id` desconhecido retorna 404.
+      sortKey: -1784934175000
+    method: POST
     settings: *settings
   - url: '{{ _.BASE_URL }}/api/v1/video/update/-1004325653681/6'
     name: update video description

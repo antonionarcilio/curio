@@ -3,8 +3,8 @@ import { client, ensureConnected } from '@/telegram-client';
 import fs from 'fs';
 import request from 'supertest';
 import { app, authed } from './helpers/http-client';
-import { readFixtureState } from './helpers/shared-state';
-import { TARGETS, TEST_VIDEO_PATH } from './helpers/video-fixture';
+import { uploadTestFixture } from './helpers/upload-fixture';
+import { deleteFixtureViaApi, TARGETS, TEST_VIDEO_PATH } from './helpers/video-fixture';
 
 beforeAll(() => ensureConnected());
 // destroy() é o shutdown completo do cliente TeleProto; disconnect() pode
@@ -16,14 +16,19 @@ afterAll(() => client.destroy());
 // ("me"), o suficiente pra provar que o caminho sem Range também funciona
 // byte a byte sem baixar o arquivo inteiro em toda combinação de teste/alvo.
 describe.each(TARGETS)('GET /api/v1/video/stream/:chatId/:messageId (e2e) — $label', ({ chatId, isChannel }) => {
-  function fixture() {
-    const found = readFixtureState(chatId);
-    if (!found) throw new Error(`Fixture ausente para "${chatId}" — upload-video.e2e.test.ts precisa rodar antes`);
-    return found;
-  }
+  let messageId: number;
+
+  beforeAll(async () => {
+    const job = await uploadTestFixture(chatId, TEST_VIDEO_PATH);
+    if (job.status !== 'completed' || !job.message_id) throw new Error(`Falha ao criar fixture para "${chatId}"`);
+    messageId = job.message_id;
+  });
+
+  afterAll(async () => {
+    if (messageId) await deleteFixtureViaApi(chatId, messageId);
+  });
 
   it('streams a byte-exact partial range with 206 and a correct Content-Range', async () => {
-    const { messageId } = fixture();
     const localBytes = fs.readFileSync(TEST_VIDEO_PATH).subarray(0, 65536);
     const size = fs.statSync(TEST_VIDEO_PATH).size;
 
@@ -44,7 +49,6 @@ describe.each(TARGETS)('GET /api/v1/video/stream/:chatId/:messageId (e2e) — $l
 
   if (!isChannel) {
     it('streams the full file with 200 when there is no Range header', async () => {
-      const { messageId } = fixture();
       const localBuffer = fs.readFileSync(TEST_VIDEO_PATH);
 
       const res = await authed(request(app).get(`/api/v1/video/stream/${chatId}/${messageId}`))
@@ -62,7 +66,6 @@ describe.each(TARGETS)('GET /api/v1/video/stream/:chatId/:messageId (e2e) — $l
   }
 
   it('accepts a signed url with no Authorization header', async () => {
-    const { messageId } = fixture();
     const signedUrl = createSignedUrl('', chatId, messageId);
 
     const res = await request(app).get(signedUrl).set('Range', 'bytes=0-1023');
@@ -71,7 +74,6 @@ describe.each(TARGETS)('GET /api/v1/video/stream/:chatId/:messageId (e2e) — $l
   });
 
   it('rejects a tampered signature with 401', async () => {
-    const { messageId } = fixture();
     const signedUrl = createSignedUrl('', chatId, messageId).replace(/sig=[0-9a-f]+/, 'sig=0000000000000000');
 
     const res = await request(app).get(signedUrl).set('Range', 'bytes=0-1023');

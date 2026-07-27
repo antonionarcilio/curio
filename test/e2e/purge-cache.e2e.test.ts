@@ -1,8 +1,8 @@
 import { client, ensureConnected } from '@/telegram-client';
 import request from 'supertest';
 import { app, authed } from './helpers/http-client';
-import { readFixtureState } from './helpers/shared-state';
-import { TARGETS } from './helpers/video-fixture';
+import { uploadTestFixture } from './helpers/upload-fixture';
+import { deleteFixtureViaApi, TARGETS, TEST_QUEUE_VIDEO_PATH } from './helpers/video-fixture';
 
 beforeAll(() => ensureConnected());
 // destroy() é o shutdown completo do cliente TeleProto; disconnect() pode
@@ -14,18 +14,27 @@ if (!channelTarget) throw new Error('TARGETS precisa incluir um alvo de canal');
 const { chatId } = channelTarget;
 
 describe('POST /api/v1/cache/purge (e2e)', () => {
-  it('clears the cache and a subsequent read still finds the fixture', async () => {
-    const fixture = readFixtureState(chatId);
-    if (!fixture) throw new Error(`Fixture ausente para "${chatId}" — upload-video.e2e.test.ts precisa rodar antes`);
+  let messageId: number;
 
+  beforeAll(async () => {
+    const job = await uploadTestFixture(chatId, TEST_QUEUE_VIDEO_PATH);
+    if (job.status !== 'completed' || !job.message_id) throw new Error(`Falha ao criar fixture para "${chatId}"`);
+    messageId = job.message_id;
+  });
+
+  afterAll(async () => {
+    if (messageId) await deleteFixtureViaApi(chatId, messageId);
+  });
+
+  it('clears the cache and a subsequent read still finds the fixture', async () => {
     const before = await authed(request(app).get(`/api/v1/videos/by/${chatId}`)).query({ limit: 200 });
-    expect(before.body.data.some((entry: { message_id: number }) => entry.message_id === fixture.messageId)).toBe(true);
+    expect(before.body.data.some((entry: { message_id: number }) => entry.message_id === messageId)).toBe(true);
 
     const purgeRes = await authed(request(app).post('/api/v1/cache/purge'));
     expect(purgeRes.status).toBe(200);
     expect(purgeRes.body).toEqual({ purged: true });
 
     const after = await authed(request(app).get(`/api/v1/videos/by/${chatId}`)).query({ limit: 200 });
-    expect(after.body.data.some((entry: { message_id: number }) => entry.message_id === fixture.messageId)).toBe(true);
+    expect(after.body.data.some((entry: { message_id: number }) => entry.message_id === messageId)).toBe(true);
   });
 });

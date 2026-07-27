@@ -1,8 +1,15 @@
 import { client, ensureConnected } from '@/telegram-client';
 import request from 'supertest';
 import { app, authed } from './helpers/http-client';
-import { readFixtureState } from './helpers/shared-state';
-import { EDITED_DESCRIPTION, TARGETS, TEST_FILE_NAME } from './helpers/video-fixture';
+import { uploadTestFixture } from './helpers/upload-fixture';
+import {
+  buildSmallThumbnailBuffer,
+  deleteFixtureViaApi,
+  ORIGINAL_DESCRIPTION,
+  TARGETS,
+  TEST_QUEUE_FILE_NAME,
+  TEST_QUEUE_VIDEO_PATH,
+} from './helpers/video-fixture';
 
 beforeAll(() => ensureConnected());
 // destroy() é o shutdown completo do cliente TeleProto; disconnect() pode
@@ -10,23 +17,31 @@ beforeAll(() => ensureConnected());
 afterAll(() => client.destroy());
 
 describe.each(TARGETS)('GET /api/v1/videos/by/:chatId (e2e) — $label', ({ chatId }) => {
-  function fixture() {
-    const found = readFixtureState(chatId);
-    if (!found) throw new Error(`Fixture ausente para "${chatId}" — upload-video.e2e.test.ts precisa rodar antes`);
-    return found;
-  }
+  let messageId: number;
 
-  it('returns the rich item shape with thumbnail: null by default, and the caption updated', async () => {
-    const { messageId } = fixture();
+  beforeAll(async () => {
+    const thumbnailBuffer = await buildSmallThumbnailBuffer();
+    const job = await uploadTestFixture(chatId, TEST_QUEUE_VIDEO_PATH, {
+      description: ORIGINAL_DESCRIPTION,
+      thumbnail: thumbnailBuffer,
+    });
+    if (job.status !== 'completed' || !job.message_id) throw new Error(`Falha ao criar fixture para "${chatId}"`);
+    messageId = job.message_id;
+  });
 
+  afterAll(async () => {
+    if (messageId) await deleteFixtureViaApi(chatId, messageId);
+  });
+
+  it('returns the rich item shape with thumbnail: null by default', async () => {
     const res = await authed(request(app).get(`/api/v1/videos/by/${chatId}`)).query({ limit: 200 });
 
     expect(res.status).toBe(200);
     expect(res.body.chat_id).toBe(chatId);
     const item = res.body.data.find((entry: { message_id: number }) => entry.message_id === messageId);
     expect(item).toMatchObject({
-      file_name: TEST_FILE_NAME,
-      description: EDITED_DESCRIPTION,
+      file_name: TEST_QUEUE_FILE_NAME,
+      description: ORIGINAL_DESCRIPTION,
       duration: expect.any(Number),
       width: expect.any(Number),
       height: expect.any(Number),
@@ -41,16 +56,14 @@ describe.each(TARGETS)('GET /api/v1/videos/by/:chatId (e2e) — $label', ({ chat
   it('filters by file_name', async () => {
     const res = await authed(request(app).get(`/api/v1/videos/by/${chatId}`)).query({
       limit: 200,
-      file_name: TEST_FILE_NAME,
+      file_name: TEST_QUEUE_FILE_NAME,
     });
 
     expect(res.body.data.length).toBeGreaterThan(0);
-    expect(res.body.data.every((entry: { file_name: string }) => entry.file_name === TEST_FILE_NAME)).toBe(true);
+    expect(res.body.data.every((entry: { file_name: string }) => entry.file_name === TEST_QUEUE_FILE_NAME)).toBe(true);
   });
 
   it('downloads a real thumbnail when thumbnail=true', async () => {
-    const { messageId } = fixture();
-
     const res = await authed(request(app).get(`/api/v1/videos/by/${chatId}`)).query({
       limit: 200,
       thumbnail: 'true',
@@ -77,12 +90,12 @@ describe.each(TARGETS)('GET /api/v1/videos/by/:chatId (e2e) — $label', ({ chat
   it('combines file_name with pagination', async () => {
     const res = await authed(request(app).get(`/api/v1/videos/by/${chatId}`)).query({
       limit: 200,
-      file_name: TEST_FILE_NAME,
+      file_name: TEST_QUEUE_FILE_NAME,
       page: 1,
       per_page: 5,
     });
 
     expect(res.body.data.length).toBeGreaterThan(0);
-    expect(res.body.data.every((entry: { file_name: string }) => entry.file_name === TEST_FILE_NAME)).toBe(true);
+    expect(res.body.data.every((entry: { file_name: string }) => entry.file_name === TEST_QUEUE_FILE_NAME)).toBe(true);
   });
 });

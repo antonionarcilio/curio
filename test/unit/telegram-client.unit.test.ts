@@ -3,6 +3,10 @@ const mockClient = {
   getMessages: jest.fn(),
   getDialogs: jest.fn(),
   getEntity: jest.fn(),
+  // getChannelInfoUncached usa isso pra marcar o channel_id com o prefixo
+  // "-100" (mesma convenção que dialog.id já usa) — o mock reflete o id da
+  // entidade resolvida, igual o TeleProto real faria.
+  getPeerId: jest.fn((entity: { id?: unknown }) => Promise.resolve(String(entity?.id))),
   api: {
     channels: {
       getFullChannel: jest.fn(),

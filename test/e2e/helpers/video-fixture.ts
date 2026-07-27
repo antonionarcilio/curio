@@ -44,6 +44,9 @@ const TEST_THUMBNAIL_PATH = path.join(
 // Upload não permite mais renomear o arquivo (query param `filename`
 // removida) — o nome final é sempre o nome original do arquivo enviado.
 const TEST_FILE_NAME = path.basename(TEST_VIDEO_PATH);
+// Nome esperado quando o fixture é o vídeo pequeno (TEST_QUEUE_VIDEO_PATH) —
+// usado pelos arquivos que não precisam do vídeo de 177MB.
+const TEST_QUEUE_FILE_NAME = path.basename(TEST_QUEUE_VIDEO_PATH);
 const ORIGINAL_DESCRIPTION = 'legenda original (e2e)';
 const EDITED_DESCRIPTION = 'legenda editada (e2e)';
 
@@ -92,6 +95,7 @@ export {
   SMOKE_TEST_CHANNEL_ID,
   TARGETS,
   TEST_FILE_NAME,
+  TEST_QUEUE_FILE_NAME,
   TEST_QUEUE_VIDEO_PATH,
   TEST_THUMBNAIL_PATH,
   TEST_VIDEO_PATH,

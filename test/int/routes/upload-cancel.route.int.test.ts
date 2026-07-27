@@ -1,5 +1,13 @@
 import cancelRouter from '@/routes/video/upload-cancel/route';
-import { completeJob, createJob, failJob, getJob, requestCancel, startJob } from '@/services/upload-progress-store';
+import {
+  completeJob,
+  createJob,
+  failJob,
+  getJob,
+  pauseJob,
+  requestCancel,
+  startJob,
+} from '@/services/upload-progress-store';
 import { mountRouter } from '@test/helpers/mount-router';
 import request from 'supertest';
 
@@ -21,6 +29,17 @@ describe('POST /video/upload/cancel/:jobId', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ job_id: 'cancel-queued', status: 'cancelled' });
     expect(getJob('cancel-queued')?.status).toBe('cancelled');
+  });
+
+  it('cancels a paused job immediately, same as a queued one', async () => {
+    createJob('cancel-paused', 'me');
+    pauseJob('cancel-paused');
+
+    const res = await request(buildApp()).post('/video/upload/cancel/cancel-paused');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ job_id: 'cancel-paused', status: 'cancelled' });
+    expect(getJob('cancel-paused')?.status).toBe('cancelled');
   });
 
   it('flags an uploading job for cancellation without ending the upload', async () => {

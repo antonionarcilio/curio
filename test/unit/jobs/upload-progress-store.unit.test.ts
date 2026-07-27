@@ -5,8 +5,11 @@ import {
   failJob,
   finalizeCancelledJob,
   getJob,
+  getJobIdsByStatus,
   isCancelRequested,
+  pauseJob,
   requestCancel,
+  resumeJob,
   setProgress,
   startJob,
 } from '@/services/upload-progress-store';
@@ -133,5 +136,70 @@ describe('upload-progress-store', () => {
 
     jest.advanceTimersByTime(config.uploadProgressTtlMs);
     expect(getJob('job12')).toBeUndefined();
+  });
+
+  it('pauseJob transitions a queued job to paused', () => {
+    createJob('job13', 'me');
+    const job = pauseJob('job13');
+
+    expect(job).toMatchObject({ status: 'paused' });
+    expect(getJob('job13')).toMatchObject({ status: 'paused' });
+  });
+
+  it('pauseJob is a no-op on a job that is not queued', () => {
+    createJob('job14', 'me');
+    startJob('job14');
+    const job = pauseJob('job14');
+
+    expect(job).toMatchObject({ status: 'uploading' });
+    expect(getJob('job14')).toMatchObject({ status: 'uploading' });
+  });
+
+  it('pauseJob on an unknown job id returns undefined', () => {
+    expect(pauseJob('unknown')).toBeUndefined();
+  });
+
+  it('resumeJob transitions a paused job back to queued', () => {
+    createJob('job15', 'me');
+    pauseJob('job15');
+    const job = resumeJob('job15');
+
+    expect(job).toMatchObject({ status: 'queued' });
+    expect(getJob('job15')).toMatchObject({ status: 'queued' });
+  });
+
+  it('resumeJob is a no-op on a job that is not paused', () => {
+    createJob('job16', 'me');
+    const job = resumeJob('job16');
+
+    expect(job).toMatchObject({ status: 'queued' });
+  });
+
+  it('resumeJob on an unknown job id returns undefined', () => {
+    expect(resumeJob('unknown')).toBeUndefined();
+  });
+
+  it('requestCancel immediately finalizes a paused job as cancelled', () => {
+    createJob('job17', 'me');
+    pauseJob('job17');
+    const job = requestCancel('job17');
+
+    expect(job).toMatchObject({ status: 'cancelled', cancelRequested: true });
+  });
+
+  it('getJobIdsByStatus returns job ids with the given status in insertion order', () => {
+    createJob('job18', 'me');
+    createJob('job19', 'me');
+    createJob('job20', 'me');
+    pauseJob('job19');
+
+    const queuedIds = getJobIdsByStatus('queued').filter((id) => ['job18', 'job19', 'job20'].includes(id));
+    expect(queuedIds).toEqual(['job18', 'job20']);
+    expect(getJobIdsByStatus('paused')).toContain('job19');
+  });
+
+  it('getJobIdsByStatus excludes ids that do not match the given status', () => {
+    createJob('job21', 'me');
+    expect(getJobIdsByStatus('paused')).not.toContain('job21');
   });
 });

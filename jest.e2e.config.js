@@ -7,11 +7,10 @@ module.exports = {
   // `import 'dotenv/config'`, então o .env real é lido sozinho.
   testMatch: ['**/test/e2e/**/*.e2e.test.ts'],
   // Serial: os testes usam a mesma conta real do Telegram; rodar em paralelo
-  // dispara FLOOD_WAIT. Também garante que os arquivos rodem na ordem que o
-  // testSequencer abaixo define — upload -> update -> leituras -> purge ->
-  // delete, uma cadeia que reaproveita um único fixture por alvo.
+  // dispara FLOOD_WAIT. Cada arquivo é independente (cria e destrói seu
+  // próprio fixture via rota HTTP), então a ordem de execução não importa —
+  // sem testSequencer customizado, o Jest usa a ordenação padrão.
   maxWorkers: 1,
-  testSequencer: '<rootDir>/test/e2e/sequencer.js',
   // client.destroy() (ver test/e2e/*.e2e.test.ts) já resolve o loop de ping
   // infinito do GramJS, mas cada TelegramClient normalmente mantém conexões
   // com mais de um datacenter (principal + o de mídia, usado no upload/download

@@ -1,12 +1,11 @@
-import config from '@/config';
-import { createJob, failJob, getJob, setProgress, startJob } from '@/services/upload-progress-store';
+import { createJob, failJob, setProgress } from '@/services/upload-progress-store';
 import { settleUploadJob } from '@/services/videos/upload-job-settlement';
+import { enqueueUpload } from '@/services/videos/upload-scheduler';
 import { MAX_UPLOAD_SIZE_BYTES, uploadVideo } from '@/telegram-client';
 import { SAFE_MIME_TYPE } from '@/utils/http-response';
 import { randomUUID } from 'crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
-import pLimit from 'p-limit';
 import { z } from 'zod';
 
 const router = express.Router();
@@ -16,12 +15,6 @@ const uploadFields = upload.fields([
   { name: 'file', maxCount: 1 },
   { name: 'thumbnail', maxCount: 1 },
 ]);
-
-// Limita quantos uploads reais (tg.uploadFile/tg.sendFile) rodam ao mesmo
-// tempo contra a mesma conta Telegram — mesmo risco de FLOOD_WAIT que motiva
-// TELEGRAM_FETCH_CONCURRENCY nas rotas de leitura. Requests além do limite
-// ficam retidas aqui (job em 'queued') até uma vaga abrir.
-const uploadQueue = pLimit(config.uploadConcurrencyLimit);
 
 const uploadBodySchema = z.object({
   description: z.string().trim().min(1).max(1024).optional(),
@@ -77,19 +70,19 @@ router.post('/video/upload/:chatId', parseUpload, (req: Request, res: Response) 
   createJob(jobId, chatId);
   res.status(202).json({ job_id: jobId, status: 'queued' });
 
-  uploadQueue(() => {
-    // Cancelado enquanto ainda 'queued' — nunca chega a gastar banda/slot
-    // de concorrência com um envio que já foi descartado.
-    if (getJob(jobId)?.status === 'cancelled') return undefined;
-    startJob(jobId);
-    return uploadVideo(chatId, {
+  // enqueueUpload (src/services/videos/upload-scheduler.ts) limita quantos
+  // uploads reais (tg.uploadFile/tg.sendFile) rodam ao mesmo tempo contra a
+  // conta Telegram (UPLOAD_CONCURRENCY_LIMIT) e é o que permite pausar,
+  // retomar ou cancelar um job ainda em fila.
+  enqueueUpload(jobId, () =>
+    uploadVideo(chatId, {
       buffer: file.buffer,
       originalFileName: file.originalname,
       description,
       thumbnailBuffer: thumbnail?.buffer,
       onProgress: (progress) => setProgress(jobId, progress),
-    });
-  })
+    }),
+  )
     .then((video) => video && settleUploadJob(jobId, chatId, base, video))
     .catch((err) => failJob(jobId, (err as Error).message));
 });

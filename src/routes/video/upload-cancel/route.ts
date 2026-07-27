@@ -1,4 +1,5 @@
 import { getJob, requestCancel } from '@/services/upload-progress-store';
+import { removeFromQueue } from '@/services/videos/upload-scheduler';
 import express, { type Request, type Response } from 'express';
 
 const router = express.Router();
@@ -16,6 +17,9 @@ router.post('/video/upload/cancel/:jobId', (req: Request, res: Response) => {
   }
 
   const cancelledJob = requestCancel(jobId);
+  // Job estava 'queued'/'paused' e nunca chegou a rodar — limpa a entrada
+  // pendente do scheduler na hora, em vez de esperar a próxima varredura.
+  if (cancelledJob?.status === 'cancelled') removeFromQueue(jobId);
   res.json({ job_id: jobId, status: cancelledJob?.status });
 });
 

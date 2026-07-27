@@ -17,8 +17,12 @@ router.post('/video/upload/resume/:jobId', (req: Request, res: Response) => {
   }
 
   const resumedJob = resumeJob(jobId);
+  // Snapshot antes de notifyQueueChanged(): se uma vaga estiver livre, o
+  // scheduler roda de forma síncrona e pode mutar resumedJob.status pra
+  // 'uploading' (mesma referência de objeto) antes da resposta ser montada.
+  const statusAfterResume = resumedJob?.status;
   notifyQueueChanged();
-  res.json({ job_id: jobId, status: resumedJob?.status });
+  res.json({ job_id: jobId, status: statusAfterResume });
 });
 
 export = router;

@@ -115,8 +115,9 @@ memória e só então pagina. Em
   - `thumbnail` opcional; o Telegram exige JPG pequeno e rejeita valores
     inválidos.
   - `description` opcional, até 1024 caracteres.
-  - O nome do arquivo não é configurável: `file_name` na resposta é sempre o
-    nome original do arquivo enviado.
+  - `filename` opcional; quando informado e não vazio, substitui o nome
+    original do arquivo enviado. Se for vazio ou contiver apenas espaços, é
+    tratado como ausente. `file_name` na resposta usa o nome escolhido.
 - **Concorrência**: no máximo `UPLOAD_CONCURRENCY_LIMIT` uploads reais rodam
   ao mesmo tempo contra a conta Telegram (default `1`, mesma razão de
   `FLOOD_WAIT` que motiva `TELEGRAM_FETCH_CONCURRENCY` nas rotas de leitura).

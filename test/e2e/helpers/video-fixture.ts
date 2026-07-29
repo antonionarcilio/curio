@@ -41,8 +41,8 @@ const TEST_THUMBNAIL_PATH = path.join(
   'sample',
   'file_example_JPG_1MB.jpg',
 );
-// Upload não permite mais renomear o arquivo (query param `filename`
-// removida) — o nome final é sempre o nome original do arquivo enviado.
+// Nome usado por padrão nos uploads dos fixtures; a rota também aceita o campo
+// multipart `filename` para substituir o nome original do arquivo.
 const TEST_FILE_NAME = path.basename(TEST_VIDEO_PATH);
 // Nome esperado quando o fixture é o vídeo pequeno (TEST_QUEUE_VIDEO_PATH) —
 // usado pelos arquivos que não precisam do vídeo de 177MB.

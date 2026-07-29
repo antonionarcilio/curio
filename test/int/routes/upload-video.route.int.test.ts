@@ -107,6 +107,45 @@ describe('POST /video/upload/:chatId', () => {
     expect(params.thumbnailBuffer).toBeUndefined();
   });
 
+  it('uses the filename multipart field instead of the uploaded filename', async () => {
+    mockUploadVideo.mockResolvedValue(uploadedVideo);
+
+    const res = await request(buildApp())
+      .post('/video/upload/me')
+      .field('filename', 'renamed-video.mp4')
+      .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' });
+
+    expect(res.status).toBe(202);
+    await waitForJobSettled(res.body.job_id);
+    expect(mockUploadVideo.mock.calls[0][1].originalFileName).toBe('renamed-video.mp4');
+  });
+
+  it('ignores an empty filename and uses the multipart filename', async () => {
+    mockUploadVideo.mockResolvedValue(uploadedVideo);
+
+    const res = await request(buildApp())
+      .post('/video/upload/me')
+      .field('filename', '')
+      .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' });
+
+    expect(res.status).toBe(202);
+    await waitForJobSettled(res.body.job_id);
+    expect(mockUploadVideo.mock.calls[0][1].originalFileName).toBe('original.mp4');
+  });
+
+  it('ignores a whitespace-only filename and uses the multipart filename', async () => {
+    mockUploadVideo.mockResolvedValue(uploadedVideo);
+
+    const res = await request(buildApp())
+      .post('/video/upload/me')
+      .field('filename', '  ')
+      .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' });
+
+    expect(res.status).toBe(202);
+    await waitForJobSettled(res.body.job_id);
+    expect(mockUploadVideo.mock.calls[0][1].originalFileName).toBe('original.mp4');
+  });
+
   it('returns 400 when no file is attached', async () => {
     const res = await request(buildApp()).post('/video/upload/me').field('description', 'sem arquivo');
 

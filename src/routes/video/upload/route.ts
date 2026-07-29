@@ -18,6 +18,10 @@ const uploadFields = upload.fields([
 
 const uploadBodySchema = z.object({
   description: z.string().trim().min(1).max(1024).optional(),
+  filename: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().trim().min(1).optional(),
+  ),
 });
 
 // multer reporta arquivo grande demais via `next(err)`, não via req.files —
@@ -62,7 +66,8 @@ router.post('/video/upload/:chatId', parseUpload, (req: Request, res: Response) 
   }
 
   const { chatId } = req.params;
-  const { description } = parsedBody.data;
+  const { description, filename } = parsedBody.data;
+  const originalFileName = filename ?? file.originalname;
   const thumbnail = files?.thumbnail?.[0];
   const base = `${req.protocol}://${req.get('host')}`;
 
@@ -77,7 +82,7 @@ router.post('/video/upload/:chatId', parseUpload, (req: Request, res: Response) 
   enqueueUpload(jobId, () =>
     uploadVideo(chatId, {
       buffer: file.buffer,
-      originalFileName: file.originalname,
+      originalFileName,
       description,
       thumbnailBuffer: thumbnail?.buffer,
       onProgress: (progress) => setProgress(jobId, progress),

@@ -2,6 +2,7 @@ import express from 'express';
 import purgeCacheRouter from './routes/cache/purge/route';
 import channelRouter from './routes/channel/route';
 import channelsRouter from './routes/channels/route';
+import meRouter from './routes/me/route';
 import deleteVideoRouter from './routes/video/delete/route';
 import downloadVideoRouter from './routes/video/dl/route';
 import streamVideoRouter from './routes/video/stream/route';
@@ -18,6 +19,7 @@ import groupedVideosRouter from './routes/videos/grouped/route';
 
 const router = express.Router();
 
+router.use(meRouter);
 router.use(channelRouter);
 router.use(channelsRouter);
 router.use(groupedVideosRouter);

@@ -10,10 +10,35 @@ meta:
 
     Configure `BASE_URL` (default `http://localhost:8787`) e envie `Authorization: Bearer <ACCESS_TOKEN>` em todas as rotas, exceto `video/stream` e `video/dl` quando acessadas com URL assinada (`?exp=&sig=`).
 
-    Cache: `/api/v1/videos/grouped`, `/api/v1/videos/by/:chatId`, `/api/v1/channels`, `/api/v1/channel/:channel_id` e a resolução de metadados de stream/download usam cache em memória com TTL. Use `POST /api/v1/cache/purge` para forçar dados frescos.
+    Cache: `/api/v1/me`, `/api/v1/videos/grouped`, `/api/v1/videos/by/:chatId`, `/api/v1/channels`, `/api/v1/channel/:channel_id` e a resolução de metadados de stream/download usam cache em memória com TTL. Use `POST /api/v1/cache/purge` para forçar dados frescos.
 
     Documentação completa: `docs/ROUTES.md`.
 collection:
+  - url: '{{ _.BASE_URL }}/api/v1/me'
+    name: me
+    meta:
+      id: req_me_v1
+      created: 1784933376601
+      modified: 1784933376601
+      isPrivate: false
+      description: |-
+        Retorna o perfil da conta Telegram autenticada no servidor.
+
+        Acesso: Privada.
+        Query params: nenhum.
+        Resposta: `{ id, first_name, last_name, username, premium }`.
+        Não expõe telefone nem o objeto bruto do Telegram.
+      sortKey: -1784931209195
+    method: GET
+    parameters: []
+    settings: &settings
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
   - url: '{{ _.BASE_URL }}/api/v1/channels'
     name: channels
     meta:
@@ -50,14 +75,7 @@ collection:
         value: '10'
         description: itens por página, até 100
         disabled: true
-    settings: &settings
-      renderRequestBody: true
-      encodeUrl: true
-      followRedirects: global
-      cookies:
-        send: true
-        store: true
-      rebuildPath: true
+    settings: *settings
   - url: '{{ _.BASE_URL }}/api/v1/channel/-1003915432695'
     name: channel detail
     meta:
@@ -223,7 +241,7 @@ collection:
         `job_id` retornado para acompanhar e obter o resultado final.
 
         Acesso: Privada.
-        Corpo: multipart `file` obrigatório, `thumbnail` e `description` opcionais. O nome do arquivo não é configurável.
+        Corpo: multipart `file` obrigatório, `thumbnail`, `description` e `filename` opcionais. O campo `filename`, quando informado e não vazio, renomeia o arquivo enviado; sem ele, ou quando vazio, usa o nome original do multipart.
         Concorrência: no máximo UPLOAD_CONCURRENCY_LIMIT uploads reais em paralelo (default 1); os demais ficam com o job em `queued`.
         Resposta: `202 Accepted`, `{ job_id, status: "queued" }`.
       sortKey: -1784934100000
@@ -240,6 +258,10 @@ collection:
           disabled: true
         - name: description
           value: ''
+          disabled: true
+        - name: filename
+          value: ''
+          description: nome opcional do arquivo; vazio usa o nome original do multipart
           disabled: true
     settings: *settings
   - url: '{{ _.BASE_URL }}/api/v1/video/upload/progress/JOB_ID'

@@ -83,6 +83,14 @@ type ChannelInfo = {
   online_count: number | null;
 };
 
+type MyProfile = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  username: string | null;
+  premium: boolean;
+};
+
 type VideoFetchParams = { limit: number; offset: number };
 
 type VideoFetchResult = { items: ChannelVideoItem[]; total: number };
@@ -310,6 +318,21 @@ async function listChannelsUncached(limit: number): Promise<ChannelListEntry[]> 
 
 const listChannels = withCache(config.cacheTtlMs, (limit: number) => `${limit}`, listChannelsUncached);
 
+async function getMyProfileUncached(): Promise<MyProfile> {
+  const tg = await ensureConnected();
+  const me = await tg.getMe();
+
+  return {
+    id: me.id.toString(),
+    first_name: optionalString(me.firstName),
+    last_name: optionalString(me.lastName),
+    username: optionalString(me.username),
+    premium: me.premium ?? false,
+  };
+}
+
+const getMyProfile = withCache(config.cacheTtlMs, () => 'me', getMyProfileUncached);
+
 async function getChannelInfoUncached(channelId: string): Promise<ChannelInfo> {
   const entity = (await resolveEntity(channelId)) as Api.TypeEntityLike & {
     className?: string;
@@ -536,6 +559,7 @@ export {
   ensureConnected,
   getChannelInfo,
   getChannelVideos,
+  getMyProfile,
   getVideoMessage,
   getVideoThumbnail,
   listAllVideos,
@@ -544,4 +568,12 @@ export {
   MAX_UPLOAD_SIZE_BYTES,
   uploadVideo,
 };
-export type { ChannelInfo, ChannelVideoItem, VideoFetchParams, VideoListEntry, VideoListItem, VideoThumbnail };
+export type {
+  ChannelInfo,
+  ChannelVideoItem,
+  MyProfile,
+  VideoFetchParams,
+  VideoListEntry,
+  VideoListItem,
+  VideoThumbnail,
+};

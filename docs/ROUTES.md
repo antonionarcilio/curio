@@ -8,11 +8,22 @@ aceita o header privado ou uma URL assinada com `exp`/`sig`, escopada ao
 `chatId`/`messageId` e com expiração de 1h. Veja
 [`../README.md`](../README.md#autenticação) para a explicação completa.
 
-As rotas de leitura (`/api/v1/videos/grouped`, `/api/v1/videos/by/:chatId`,
+As rotas de leitura (`/api/v1/me`, `/api/v1/videos/grouped`, `/api/v1/videos/by/:chatId`,
 `/api/v1/channels`, `/api/v1/channel/:channel_id` e a resolução de metadados
 usada por stream/download) usam cache em memória com TTL configurável
 (`CACHE_TTL_MS`, default 3 min). Use `POST /api/v1/cache/purge` para forçar
 dados frescos.
+
+## `GET /api/v1/me`
+
+- **Propósito**: retorna o perfil da conta Telegram autenticada no servidor.
+- **Acesso**: Privada.
+- **Query params**: nenhum.
+- **Resposta**: `{ id, first_name, last_name, username, premium }`. Campos de
+  texto não informados pelo Telegram retornam `null`; `premium` é booleano.
+- **Privacidade**: o telefone e os demais campos brutos recebidos do Telegram
+  não são expostos.
+- **Cache**: usa o TTL das demais rotas de leitura.
 
 ## Paginação
 
@@ -115,8 +126,9 @@ memória e só então pagina. Em
   - `thumbnail` opcional; o Telegram exige JPG pequeno e rejeita valores
     inválidos.
   - `description` opcional, até 1024 caracteres.
-  - O nome do arquivo não é configurável: `file_name` na resposta é sempre o
-    nome original do arquivo enviado.
+  - `filename` opcional; quando informado e não vazio, substitui o nome
+    original do arquivo enviado. Se for vazio ou contiver apenas espaços, é
+    tratado como ausente. `file_name` na resposta usa o nome escolhido.
 - **Concorrência**: no máximo `UPLOAD_CONCURRENCY_LIMIT` uploads reais rodam
   ao mesmo tempo contra a conta Telegram (default `1`, mesma razão de
   `FLOOD_WAIT` que motiva `TELEGRAM_FETCH_CONCURRENCY` nas rotas de leitura).

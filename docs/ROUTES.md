@@ -8,11 +8,22 @@ aceita o header privado ou uma URL assinada com `exp`/`sig`, escopada ao
 `chatId`/`messageId` e com expiração de 1h. Veja
 [`../README.md`](../README.md#autenticação) para a explicação completa.
 
-As rotas de leitura (`/api/v1/videos/grouped`, `/api/v1/videos/by/:chatId`,
+As rotas de leitura (`/api/v1/me`, `/api/v1/videos/grouped`, `/api/v1/videos/by/:chatId`,
 `/api/v1/channels`, `/api/v1/channel/:channel_id` e a resolução de metadados
 usada por stream/download) usam cache em memória com TTL configurável
 (`CACHE_TTL_MS`, default 3 min). Use `POST /api/v1/cache/purge` para forçar
 dados frescos.
+
+## `GET /api/v1/me`
+
+- **Propósito**: retorna o perfil da conta Telegram autenticada no servidor.
+- **Acesso**: Privada.
+- **Query params**: nenhum.
+- **Resposta**: `{ id, first_name, last_name, username, premium }`. Campos de
+  texto não informados pelo Telegram retornam `null`; `premium` é booleano.
+- **Privacidade**: o telefone e os demais campos brutos recebidos do Telegram
+  não são expostos.
+- **Cache**: usa o TTL das demais rotas de leitura.
 
 ## Paginação
 

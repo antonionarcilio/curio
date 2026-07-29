@@ -3,6 +3,7 @@ const mockClient = {
   getMessages: jest.fn(),
   getDialogs: jest.fn(),
   getEntity: jest.fn(),
+  getMe: jest.fn(),
   // getChannelInfoUncached usa isso pra marcar o channel_id com o prefixo
   // "-100" (mesma convenção que dialog.id já usa) — o mock reflete o id da
   // entidade resolvida, igual o TeleProto real faria.
@@ -48,6 +49,7 @@ import {
   ensureConnected,
   getChannelInfo,
   getChannelVideos,
+  getMyProfile,
   getVideoMessage,
   getVideoThumbnail,
   listAllVideos,
@@ -99,6 +101,37 @@ describe('telegram-client', () => {
 
   it('client is the mocked TelegramClient instance', () => {
     expect(client).toBe(mockClient);
+  });
+
+  describe('getMyProfile', () => {
+    it('maps the logged-in Telegram user to the public profile contract', async () => {
+      mockClient.getMe.mockResolvedValue({
+        id: BigInt(123456789),
+        firstName: 'Ana',
+        username: 'ana',
+        premium: true,
+      });
+
+      await expect(getMyProfile()).resolves.toEqual({
+        id: '123456789',
+        first_name: 'Ana',
+        last_name: null,
+        username: 'ana',
+        premium: true,
+      });
+    });
+
+    it('normalizes omitted profile text fields and premium status', async () => {
+      mockClient.getMe.mockResolvedValue({ id: BigInt(7) });
+
+      await expect(getMyProfile()).resolves.toEqual({
+        id: '7',
+        first_name: null,
+        last_name: null,
+        username: null,
+        premium: false,
+      });
+    });
   });
 
   describe('ensureConnected', () => {

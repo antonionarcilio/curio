@@ -1,6 +1,8 @@
 import { createSignedUrl } from '@/signed-url';
 import request from 'supertest';
 
+const mockGetMyProfile = jest.fn();
+
 jest.mock('@/telegram-client', () => ({
   client: { _media: { getFile: jest.fn() } },
   ensureConnected: jest.fn().mockResolvedValue(undefined),
@@ -19,6 +21,7 @@ jest.mock('@/telegram-client', () => ({
     banned_count: null,
     online_count: null,
   }),
+  getMyProfile: mockGetMyProfile,
   listVideos: jest.fn().mockResolvedValue({ items: [], total: 0 }),
   editVideoCaption: jest.fn().mockResolvedValue(undefined),
 }));
@@ -40,6 +43,29 @@ describe('requireToken (HTTP integration via buildApp)', () => {
   it('passes through with the correct Bearer token', async () => {
     const res = await request(buildApp()).get('/api/v1/videos/grouped').set('Authorization', `Bearer ${ACCESS_TOKEN}`);
     expect(res.status).toBe(200);
+  });
+
+  it('protects GET /me with the global Bearer-token middleware', async () => {
+    mockGetMyProfile.mockResolvedValue({
+      id: '123456789',
+      first_name: 'Ana',
+      last_name: null,
+      username: 'ana',
+      premium: false,
+    });
+
+    const unauthenticated = await request(buildApp()).get('/api/v1/me');
+    expect(unauthenticated.status).toBe(401);
+
+    const authenticated = await request(buildApp()).get('/api/v1/me').set('Authorization', `Bearer ${ACCESS_TOKEN}`);
+    expect(authenticated.status).toBe(200);
+    expect(authenticated.body).toEqual({
+      id: '123456789',
+      first_name: 'Ana',
+      last_name: null,
+      username: 'ana',
+      premium: false,
+    });
   });
 
   it('returns 401 with an incorrect Bearer token', async () => {

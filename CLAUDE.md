@@ -162,6 +162,21 @@ All of the above (except `SMOKE_TEST_CHANNEL_ID`, which bypasses `config.ts` ent
 
 **Dev auto-fill, fail-closed by design:** if `config.isDev` (`NODE_ENV === "development"`, exact match — not just "truthy" or "not production") and the incoming request has no `Authorization` header, `requireToken` injects `Bearer <ACCESS_TOKEN>` automatically before checking it, so local testing doesn't require passing the header on every call. Any other `NODE_ENV` value, including unset, skips this and enforces the header strictly. This was a deliberate choice after considering the alternative (`isDev` defaulting to true unless `NODE_ENV=production`): defaulting to open is a common footgun if a real deployment forgets to set `NODE_ENV` — this codebase defaults to strict instead.
 
+### Request input placement (mandatory)
+
+Every endpoint must place input according to its HTTP role. Do not move inputs between path, query, and body merely to make routes look uniform.
+
+- **Path params** identify the stable target resource or action target: `chatId`, `messageId`, and `jobId` belong in the path. Do not duplicate them in the body.
+- **Query params** describe a `GET` representation: filtering, sorting, pagination, field selection, or bounded read options such as `thumbnail`. They must not perform a mutation. Do not put a body on a `GET` route: intermediaries and HTTP clients do not consistently support or cache it.
+- **Request body** carries data that creates or changes state, or meaningful options for a non-GET command. Use JSON by default; use `multipart/form-data` when files are sent. For example, upload `file`, `thumbnail`, `description`, and `filename` are multipart body fields, while an edited `description` is a JSON body field.
+- **Headers** carry transport/authentication concerns, including `Authorization` and `Range`; never put the master access token in a query string.
+
+The only approved query-string exception is `exp`/`sig` on direct `GET` stream/download URLs. These routes must remain usable by VLC, browsers, `<video src>`, and download links, which cannot reliably send a body or custom authorization header. The signature must remain scoped and time-limited; do not replace it with the master token.
+
+If a read filter itself is sensitive enough that it must not appear in browser history, access logs, or shared URLs, add a **new, explicitly documented `POST` search endpoint** with a JSON body. Preserve the existing `GET` listing endpoint and its query contract unless the user explicitly authorizes a breaking API version/change. Do not introduce such a search endpoint speculatively.
+
+For every route change, update its Zod parser, integration tests, `docs/ROUTES.md`, and the matching Insomnia request in the same change. Tests must assert the intended location of each input (path/query/body), not only the resulting response.
+
 ### Request flow
 
 1. Every request must include valid credentials (checked via constant-time comparison in `server.js`) — `Authorization: Bearer <ACCESS_TOKEN>` everywhere, or signed `?exp=...&sig=...` on stream/download only; requests without either get `401`.

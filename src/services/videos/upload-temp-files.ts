@@ -4,7 +4,8 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 
-const UPLOAD_TEMP_DIR = path.join(os.tmpdir(), 'tg-uploader-api');
+const UPLOAD_TEMP_DIR = path.join(os.tmpdir(), 'api-tg-cdn');
+const LEGACY_UPLOAD_TEMP_DIR = path.join(os.tmpdir(), 'tg-uploader-api');
 
 function uploadTempDir(): string {
   return UPLOAD_TEMP_DIR;
@@ -27,7 +28,10 @@ async function cleanupUploadFiles(paths: readonly string[]): Promise<void> {
 // recuperável: jobs de upload são somente em memória. Limpa-os antes de
 // aceitar novas requisições no próximo boot.
 async function cleanupOrphanedUploadFiles(): Promise<void> {
-  await fs.rm(UPLOAD_TEMP_DIR, { recursive: true, force: true });
+  await Promise.all([
+    fs.rm(UPLOAD_TEMP_DIR, { recursive: true, force: true }),
+    fs.rm(LEGACY_UPLOAD_TEMP_DIR, { recursive: true, force: true }),
+  ]);
   ensureUploadTempDir();
 }
 

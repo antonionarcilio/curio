@@ -3,6 +3,7 @@ services:
     build:
       context: .
       target: prod
+    image: api-tg-cdn:latest
     restart: unless-stopped
     env_file: .env
     ports:

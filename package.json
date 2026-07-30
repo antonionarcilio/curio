@@ -1,6 +1,6 @@
 {
-  "name": "tg-uploader-api",
-  "version": "1.4.0",
+  "name": "api-tg-cdn",
+  "version": "1.5.0",
   "description": "HTTP server that streams videos stored in Telegram (private channels / Saved Messages) with Range request support",
   "main": "dist/server.js",
   "type": "commonjs",

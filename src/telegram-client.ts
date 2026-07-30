@@ -451,6 +451,7 @@ const listAllVideos = withCache(
 type UploadVideoParams = {
   buffer: Buffer;
   originalFileName: string;
+  maxUploadSizeBytes?: number;
   description?: string;
   thumbnailBuffer?: Buffer;
   onProgress?: (progress: number) => void;
@@ -462,7 +463,16 @@ type UploadVideoParams = {
 // sem path real), qualquer vídeo nessa faixa quebraria com "Either one of
 // `buffer` or `filePath` should be specified" se não forçássemos o buffer
 // path explicitamente via `maxBufferSize` abaixo.
-const MAX_UPLOAD_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
+const STANDARD_MAX_UPLOAD_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
+const PREMIUM_MAX_UPLOAD_SIZE_BYTES = 4 * 1024 * 1024 * 1024;
+
+// Não reutiliza o cache de getMyProfile: o limite de upload precisa refletir
+// o plano atual no instante em que a requisição começa a receber seus bytes.
+async function getUploadMaxSize(): Promise<number> {
+  const tg = await ensureConnected();
+  const me = await tg.getMe();
+  return me.premium ? PREMIUM_MAX_UPLOAD_SIZE_BYTES : STANDARD_MAX_UPLOAD_SIZE_BYTES;
+}
 
 // editMessage do Telegram só troca os bytes do arquivo (file/forceDocument),
 // nunca nome/thumbnail (attributes/thumb) — por isso thumbnail customizado só
@@ -482,7 +492,7 @@ async function uploadVideo(chatId: string, params: UploadVideoParams): Promise<V
   const uploadedFile = await tg.uploadFile({
     file,
     workers: 1,
-    maxBufferSize: MAX_UPLOAD_SIZE_BYTES,
+    maxBufferSize: params.maxUploadSizeBytes ?? STANDARD_MAX_UPLOAD_SIZE_BYTES,
     onProgress: params.onProgress,
   });
 
@@ -560,12 +570,14 @@ export {
   getChannelInfo,
   getChannelVideos,
   getMyProfile,
+  getUploadMaxSize,
   getVideoMessage,
   getVideoThumbnail,
   listAllVideos,
   listChannels,
   listVideos,
-  MAX_UPLOAD_SIZE_BYTES,
+  PREMIUM_MAX_UPLOAD_SIZE_BYTES,
+  STANDARD_MAX_UPLOAD_SIZE_BYTES,
   uploadVideo,
 };
 export type {

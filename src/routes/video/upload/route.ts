@@ -1,7 +1,7 @@
 import { createJob, failJob, setProgress } from '@/services/upload-progress-store';
 import { settleUploadJob } from '@/services/videos/upload-job-settlement';
 import { enqueueUpload } from '@/services/videos/upload-scheduler';
-import { MAX_UPLOAD_SIZE_BYTES, uploadVideo } from '@/telegram-client';
+import { getUploadMaxSize, uploadVideo } from '@/telegram-client';
 import { SAFE_MIME_TYPE } from '@/utils/http-response';
 import { randomUUID } from 'crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
@@ -9,12 +9,6 @@ import multer from 'multer';
 import { z } from 'zod';
 
 const router = express.Router();
-
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_UPLOAD_SIZE_BYTES } });
-const uploadFields = upload.fields([
-  { name: 'file', maxCount: 1 },
-  { name: 'thumbnail', maxCount: 1 },
-]);
 
 const uploadBodySchema = z.object({
   description: z.string().trim().min(1).max(1024).optional(),
@@ -27,7 +21,22 @@ const uploadBodySchema = z.object({
 // multer reporta arquivo grande demais via `next(err)`, não via req.files —
 // precisa de um wrapper pra virar um 400 claro em vez do handler de erro
 // padrão do Express.
-function parseUpload(req: Request, res: Response, next: NextFunction): void {
+async function parseUpload(req: Request, res: Response, next: NextFunction): Promise<void> {
+  let maxUploadSizeBytes: number;
+  try {
+    maxUploadSizeBytes = await getUploadMaxSize();
+  } catch {
+    res.status(503).json({ error: 'Não foi possível consultar o plano atual da conta Telegram' });
+    return;
+  }
+
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: maxUploadSizeBytes } });
+  const uploadFields = upload.fields([
+    { name: 'file', maxCount: 1 },
+    { name: 'thumbnail', maxCount: 1 },
+  ]);
+  res.locals.maxUploadSizeBytes = maxUploadSizeBytes;
+
   uploadFields(req, res, (err: unknown) => {
     if (!err) {
       next();
@@ -35,7 +44,7 @@ function parseUpload(req: Request, res: Response, next: NextFunction): void {
     }
     const message =
       err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE'
-        ? `Arquivo maior que o limite de ${MAX_UPLOAD_SIZE_BYTES} bytes (mesmo teto do Telegram)`
+        ? `Arquivo maior que o limite de ${maxUploadSizeBytes} bytes (mesmo teto do Telegram)`
         : (err as Error).message;
     res.status(400).json({ error: message });
   });
@@ -83,6 +92,7 @@ router.post('/video/upload/:chatId', parseUpload, (req: Request, res: Response) 
     uploadVideo(chatId, {
       buffer: file.buffer,
       originalFileName,
+      maxUploadSizeBytes: res.locals.maxUploadSizeBytes as number,
       description,
       thumbnailBuffer: thumbnail?.buffer,
       onProgress: (progress) => setProgress(jobId, progress),

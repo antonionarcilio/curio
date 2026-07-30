@@ -2,14 +2,14 @@ import request from 'supertest';
 
 const mockUploadVideo = jest.fn();
 const mockDeleteVideoMessage = jest.fn();
+const mockGetUploadMaxSize = jest.fn();
 
 // Limite pequeno só pra tornar o teste de rejeição por tamanho determinístico
-// e barato (o limite real, MAX_UPLOAD_SIZE_BYTES = 2GB, tornaria o teste caro
-// de simular); os outros testes deste arquivo usam buffers bem menores que 20.
+// e barato; os outros testes deste arquivo usam buffers bem menores que 20.
 jest.mock('@/telegram-client', () => ({
   uploadVideo: mockUploadVideo,
   deleteVideoMessage: mockDeleteVideoMessage,
-  MAX_UPLOAD_SIZE_BYTES: 20,
+  getUploadMaxSize: mockGetUploadMaxSize,
 }));
 
 import cancelRouter from '@/routes/video/upload-cancel/route';
@@ -49,6 +49,7 @@ async function waitForJobSettled(jobId: string): Promise<void> {
 describe('POST /video/upload/:chatId', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetUploadMaxSize.mockResolvedValue(20);
   });
 
   it('accepts the upload and returns a queued job id immediately', async () => {
@@ -72,6 +73,7 @@ describe('POST /video/upload/:chatId', () => {
     expect(params.description).toBe('uma descrição');
     expect(Buffer.isBuffer(params.buffer)).toBe(true);
     expect(Buffer.isBuffer(params.thumbnailBuffer)).toBe(true);
+    expect(params.maxUploadSizeBytes).toBe(20);
     expect(typeof params.onProgress).toBe('function');
 
     params.onProgress(0.5);
@@ -164,7 +166,7 @@ describe('POST /video/upload/:chatId', () => {
     expect(mockUploadVideo).not.toHaveBeenCalled();
   });
 
-  it('returns 400 when the file exceeds MAX_UPLOAD_SIZE_BYTES', async () => {
+  it('returns 400 when a standard-account file exceeds its limit', async () => {
     const res = await request(buildApp())
       .post('/video/upload/me')
       .attach('file', Buffer.from('this buffer is over 20 bytes long'), {
@@ -174,6 +176,43 @@ describe('POST /video/upload/:chatId', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/Arquivo maior que o limite/);
+    expect(mockUploadVideo).not.toHaveBeenCalled();
+  });
+
+  it('accepts a file above the standard limit when the account is premium', async () => {
+    mockGetUploadMaxSize.mockResolvedValue(40);
+    mockUploadVideo.mockResolvedValue(uploadedVideo);
+
+    const res = await request(buildApp())
+      .post('/video/upload/me')
+      .attach('file', Buffer.alloc(30), { filename: 'premium.mp4', contentType: 'video/mp4' });
+
+    expect(res.status).toBe(202);
+    await waitForJobSettled(res.body.job_id);
+    expect(mockUploadVideo.mock.calls[0][1].maxUploadSizeBytes).toBe(40);
+  });
+
+  it('returns 400 when a premium-account file exceeds its limit', async () => {
+    mockGetUploadMaxSize.mockResolvedValue(40);
+
+    const res = await request(buildApp())
+      .post('/video/upload/me')
+      .attach('file', Buffer.alloc(41), { filename: 'too-large.mp4', contentType: 'video/mp4' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/40 bytes/);
+    expect(mockUploadVideo).not.toHaveBeenCalled();
+  });
+
+  it('returns 503 without reading the upload when the current plan is unavailable', async () => {
+    mockGetUploadMaxSize.mockRejectedValue(new Error('Telegram indisponível'));
+
+    const res = await request(buildApp())
+      .post('/video/upload/me')
+      .attach('file', Buffer.from('video-bytes'), { filename: 'original.mp4', contentType: 'video/mp4' });
+
+    expect(res.status).toBe(503);
+    expect(res.body.error).toMatch(/plano atual/);
     expect(mockUploadVideo).not.toHaveBeenCalled();
   });
 

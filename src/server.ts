@@ -77,7 +77,7 @@ async function startServer() {
   const app = buildApp();
 
   return app.listen(config.port, () => {
-    console.log(`telegram-cdn rodando em http://localhost:${config.port}`);
+    console.log(`tg-uploader-api rodando em http://localhost:${config.port}`);
     if (config.isDev) {
       console.log('Modo dev: Authorization é preenchido automaticamente se omitido.');
     }

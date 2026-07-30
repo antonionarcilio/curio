@@ -1,4 +1,4 @@
-# telegram-cdn
+# tg-uploader-api
 
 Servidor HTTP que transmite (stream) vídeos guardados no Telegram — em canais
 privados de que você faz parte ou em "Saved Messages" — expondo uma URL que
@@ -88,15 +88,15 @@ Produção também pode buildar localmente a partir do `Dockerfile`
 (`target: prod`), em vez de usar a imagem do GHCR:
 
 ```bash
-docker build --target prod -t telegram-cdn:prod .
-docker run --env-file .env -p 8787:8787 telegram-cdn:prod
+docker build --target prod -t tg-uploader-api:prod .
+docker run --env-file .env -p 8787:8787 tg-uploader-api:prod
 ```
 
 ### Rodando a imagem publicada no GHCR
 
 ```bash
-docker pull ghcr.io/antonionarcilio/telegram-cdn:latest
-docker run --env-file .env -p 8787:8787 ghcr.io/antonionarcilio/telegram-cdn:latest
+docker pull ghcr.io/antonionarcilio/tg-uploader-api:latest
+docker run --env-file .env -p 8787:8787 ghcr.io/antonionarcilio/tg-uploader-api:latest
 ```
 
 - **`--env-file .env`**: a imagem não embute nenhuma credencial — precisa do
@@ -112,16 +112,16 @@ docker run --env-file .env -p 8787:8787 ghcr.io/antonionarcilio/telegram-cdn:lat
   autentique antes com `docker login ghcr.io -u antonionarcilio` (um PAT com
   escopo `read:packages` já é suficiente para pull).
 - Para rodar em background, adicione `-d`; para nomear o container (facilita
-  `docker logs`/`docker stop` depois), adicione `--name telegram-cdn`:
+  `docker logs`/`docker stop` depois), adicione `--name tg-uploader-api`:
 
   ```bash
-  docker run -d --name telegram-cdn --env-file .env -p 8787:8787 \
-    ghcr.io/antonionarcilio/telegram-cdn:latest
+  docker run -d --name tg-uploader-api --env-file .env -p 8787:8787 \
+    ghcr.io/antonionarcilio/tg-uploader-api:latest
   ```
 
 ### Publicação da imagem (GHCR)
 
-A imagem de produção é publicada em `ghcr.io/antonionarcilio/telegram-cdn`,
+A imagem de produção é publicada em `ghcr.io/antonionarcilio/tg-uploader-api`,
 um pacote **privado** (herda a visibilidade do repositório).
 
 **Automática**: todo push na branch `master` dispara

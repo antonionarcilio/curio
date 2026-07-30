@@ -4,7 +4,7 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 
-const UPLOAD_TEMP_DIR = path.join(os.tmpdir(), 'telegram-cdn-upload');
+const UPLOAD_TEMP_DIR = path.join(os.tmpdir(), 'tg-uploader-api');
 
 function uploadTempDir(): string {
   return UPLOAD_TEMP_DIR;

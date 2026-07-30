@@ -182,7 +182,7 @@ describe('startServer', () => {
     const devServer = require('@/server') as typeof import('@/server');
     const httpServer = await devServer.startServer();
     await waitUntil(() => logSpy.mock.calls.length >= 3);
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('telegram-cdn rodando em'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('tg-uploader-api rodando em'));
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Modo dev'));
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Exemplo: curl'));
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));

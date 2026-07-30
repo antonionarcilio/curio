@@ -1,3 +1,4 @@
+import fs from 'fs/promises';
 import pLimit from 'p-limit';
 import { Api, TelegramClient } from 'teleproto';
 import { CustomFile } from 'teleproto/client/uploads';
@@ -449,20 +450,16 @@ const listAllVideos = withCache(
 );
 
 type UploadVideoParams = {
-  buffer: Buffer;
+  videoPath: string;
+  videoSize: number;
   originalFileName: string;
   maxUploadSizeBytes?: number;
   description?: string;
-  thumbnailBuffer?: Buffer;
+  thumbnailPath?: string;
   onProgress?: (progress: number) => void;
 };
 
-// Mesmo teto que o próprio Telegram aplica a contas normais. sendFile's
-// uploadFile interno só troca pra ler de disco (`file.path`) acima de
-// ~20MB — como o upload inteiro já vive em memória (multer memoryStorage,
-// sem path real), qualquer vídeo nessa faixa quebraria com "Either one of
-// `buffer` or `filePath` should be specified" se não forçássemos o buffer
-// path explicitamente via `maxBufferSize` abaixo.
+// Mesmo teto que o próprio Telegram aplica a contas normais.
 const STANDARD_MAX_UPLOAD_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
 const PREMIUM_MAX_UPLOAD_SIZE_BYTES = 4 * 1024 * 1024 * 1024;
 
@@ -481,14 +478,12 @@ async function getUploadMaxSize(): Promise<number> {
 async function uploadVideo(chatId: string, params: UploadVideoParams): Promise<VideoListItem> {
   const tg = await ensureConnected();
   await resolveEntity(chatId);
-  const file = new CustomFile(params.originalFileName, params.buffer.length, '', params.buffer);
+  const file = new CustomFile(params.originalFileName, params.videoSize, params.videoPath);
 
-  // Faz o upload dos bytes nós mesmos (em vez de deixar o sendFile decidir)
-  // pra poder passar um `maxBufferSize` generoso — sem isso, qualquer arquivo
-  // acima de ~20MB cairia no branch de leitura por `file.path`, que é sempre
-  // vazio aqui (tudo em memória). O handle resultante (Api.InputFile ou
-  // InputFileBig) é reconhecido diretamente por sendFile, que pula a etapa de
-  // upload e só monta a mensagem.
+  // `CustomFile` recebe um caminho seekable: o TeleProto lê o vídeo em blocos
+  // do disco, sem manter o upload inteiro na memória. O handle resultante
+  // (Api.InputFile ou InputFileBig) é reconhecido diretamente por sendFile,
+  // que pula a etapa de upload e só monta a mensagem.
   const uploadedFile = await tg.uploadFile({
     file,
     workers: 1,
@@ -506,7 +501,7 @@ async function uploadVideo(chatId: string, params: UploadVideoParams): Promise<V
   // DocumentAttributeVideo aqui sobrescreve o (quebrado) auto-detect do
   // TeleProto; se o ffprobe falhar/não estiver disponível, o upload segue sem
   // esse atributo em vez de falhar.
-  const probed = await probeVideoMetadata(params.buffer);
+  const probed = await probeVideoMetadata(params.videoPath);
   if (probed) {
     attributes.push(
       new Api.DocumentAttributeVideo({
@@ -525,7 +520,7 @@ async function uploadVideo(chatId: string, params: UploadVideoParams): Promise<V
     // branch de thumb em _fileToMedia (teleproto@1.228.4) não checa
     // `instanceof CustomFile`, só `Buffer.isBuffer`, e falha com "Could not
     // create file from [object Object]" se receber um CustomFile aqui.
-    thumb: params.thumbnailBuffer,
+    thumb: params.thumbnailPath ? await fs.readFile(params.thumbnailPath) : undefined,
     caption: params.description,
     attributes,
     forceDocument: false,

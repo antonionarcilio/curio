@@ -1,3 +1,4 @@
+import fs from 'fs/promises';
 import request from 'supertest';
 
 const mockUploadVideo = jest.fn();
@@ -53,7 +54,15 @@ describe('POST /video/upload/:chatId', () => {
   });
 
   it('accepts the upload and returns a queued job id immediately', async () => {
-    mockUploadVideo.mockResolvedValue(uploadedVideo);
+    let receivedVideo: Buffer | undefined;
+    let receivedThumbnail: Buffer | undefined;
+    mockUploadVideo.mockImplementation(
+      async (_chatId: string, params: { videoPath: string; thumbnailPath: string }) => {
+        receivedVideo = await fs.readFile(params.videoPath);
+        receivedThumbnail = await fs.readFile(params.thumbnailPath);
+        return uploadedVideo;
+      },
+    );
 
     const res = await request(buildApp())
       .post('/video/upload/me')
@@ -71,13 +80,18 @@ describe('POST /video/upload/:chatId', () => {
     expect(chatId).toBe('me');
     expect(params.originalFileName).toBe('original.mp4');
     expect(params.description).toBe('uma descrição');
-    expect(Buffer.isBuffer(params.buffer)).toBe(true);
-    expect(Buffer.isBuffer(params.thumbnailBuffer)).toBe(true);
+    expect(typeof params.videoPath).toBe('string');
+    expect(params.videoSize).toBe(Buffer.byteLength('video-bytes'));
+    expect(typeof params.thumbnailPath).toBe('string');
+    expect(receivedVideo).toEqual(Buffer.from('video-bytes'));
+    expect(receivedThumbnail).toEqual(Buffer.from('thumb-bytes'));
     expect(params.maxUploadSizeBytes).toBe(20);
     expect(typeof params.onProgress).toBe('function');
 
     params.onProgress(0.5);
     expect(getJob(res.body.job_id)?.progress).toBe(0.5);
+    await expect(fs.access(params.videoPath)).rejects.toThrow();
+    await expect(fs.access(params.thumbnailPath)).rejects.toThrow();
   });
 
   it('completes the job with the uploaded video metadata and a signed url', async () => {
@@ -106,7 +120,7 @@ describe('POST /video/upload/:chatId', () => {
     await waitForJobSettled(res.body.job_id);
     const params = mockUploadVideo.mock.calls[0][1];
     expect(params.description).toBeUndefined();
-    expect(params.thumbnailBuffer).toBeUndefined();
+    expect(params.thumbnailPath).toBeUndefined();
   });
 
   it('uses the filename multipart field instead of the uploaded filename', async () => {

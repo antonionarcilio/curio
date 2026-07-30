@@ -129,6 +129,10 @@ memória e só então pagina. Em
   - `filename` opcional; quando informado e não vazio, substitui o nome
     original do arquivo enviado. Se for vazio ou contiver apenas espaços, é
     tratado como ausente. `file_name` na resposta usa o nome escolhido.
+- **Limite de arquivo**: é consultado diretamente no Telegram antes do corpo
+  multipart ser recebido: 2 GiB para conta normal e 4 GiB para conta Premium.
+  Se o plano atual não puder ser consultado, a rota retorna `503` e não aceita
+  o arquivo.
 - **Concorrência**: no máximo `UPLOAD_CONCURRENCY_LIMIT` uploads reais rodam
   ao mesmo tempo contra a conta Telegram (default `1`, mesma razão de
   `FLOOD_WAIT` que motiva `TELEGRAM_FETCH_CONCURRENCY` nas rotas de leitura).

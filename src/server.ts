@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import config from './config';
 import router from './router';
+import { cleanupOrphanedUploadFiles } from './services/videos/upload-temp-files';
 import { verifySignedUrl } from './signed-url';
 import { ensureConnected } from './telegram-client';
 
@@ -70,12 +71,13 @@ function buildApp() {
 }
 
 async function startServer() {
+  await cleanupOrphanedUploadFiles();
   await ensureConnected();
 
   const app = buildApp();
 
   return app.listen(config.port, () => {
-    console.log(`telegram-cdn rodando em http://localhost:${config.port}`);
+    console.log(`tg-uploader-api rodando em http://localhost:${config.port}`);
     if (config.isDev) {
       console.log('Modo dev: Authorization é preenchido automaticamente se omitido.');
     }

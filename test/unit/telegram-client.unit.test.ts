@@ -20,6 +20,11 @@ const mockClient = {
   downloadMedia: jest.fn(),
 };
 
+const mockReadFile = jest.fn().mockResolvedValue(Buffer.from('thumb-bytes'));
+jest.mock('fs/promises', () => ({
+  readFile: mockReadFile,
+}));
+
 jest.mock('teleproto', () => ({
   TelegramClient: jest.fn(() => mockClient),
   Api: {
@@ -50,6 +55,7 @@ import {
   getChannelInfo,
   getChannelVideos,
   getMyProfile,
+  getUploadMaxSize,
   getVideoMessage,
   getVideoThumbnail,
   listAllVideos,
@@ -131,6 +137,23 @@ describe('telegram-client', () => {
         username: null,
         premium: false,
       });
+    });
+  });
+
+  describe('getUploadMaxSize', () => {
+    it('uses the premium limit and bypasses the profile cache', async () => {
+      mockClient.getMe.mockResolvedValue({ premium: true });
+
+      await expect(getUploadMaxSize()).resolves.toBe(4 * 1024 * 1024 * 1024);
+      await expect(getUploadMaxSize()).resolves.toBe(4 * 1024 * 1024 * 1024);
+
+      expect(mockClient.getMe).toHaveBeenCalledTimes(2);
+    });
+
+    it('uses the standard limit for a non-premium account', async () => {
+      mockClient.getMe.mockResolvedValue({ premium: false });
+
+      await expect(getUploadMaxSize()).resolves.toBe(2 * 1024 * 1024 * 1024);
     });
   });
 
@@ -591,16 +614,17 @@ describe('telegram-client', () => {
       );
 
       const result = await uploadVideo('me', {
-        buffer: Buffer.from('video-bytes'),
+        videoPath: '/tmp/video.mp4',
+        videoSize: 11,
         originalFileName: 'original.mp4',
         description: 'uma descrição',
-        thumbnailBuffer: Buffer.from('thumb-bytes'),
+        thumbnailPath: '/tmp/thumb.jpg',
       });
 
       expect(mockClient.uploadFile).toHaveBeenCalledTimes(1);
       const uploadFileParams = mockClient.uploadFile.mock.calls[0][0];
       expect(uploadFileParams.file).toMatchObject({ name: 'original.mp4' });
-      expect(uploadFileParams.maxBufferSize).toBeGreaterThan(Buffer.from('video-bytes').length);
+      expect(uploadFileParams.file).toMatchObject({ size: 11, path: '/tmp/video.mp4' });
 
       expect(mockClient.sendFile).toHaveBeenCalledTimes(1);
       const [chatId, options] = mockClient.sendFile.mock.calls[0];
@@ -616,6 +640,7 @@ describe('telegram-client', () => {
       // thumb precisa ser o Buffer cru — sendFile só reconhece
       // Buffer.isBuffer(thumb) nesse branch, nunca um CustomFile.
       expect(Buffer.isBuffer(options.thumb)).toBe(true);
+      expect(mockReadFile).toHaveBeenCalledWith('/tmp/thumb.jpg');
       expect(options.attributes[0]).toMatchObject({ fileName: 'original.mp4' });
 
       expect(result).toEqual({
@@ -627,12 +652,26 @@ describe('telegram-client', () => {
       });
     });
 
+    it('uses the request-selected maximum buffer size', async () => {
+      mockClient.sendFile.mockResolvedValue(makeMessage({ id: 61 }));
+
+      await uploadVideo('me', {
+        videoPath: '/tmp/video.mp4',
+        videoSize: 11,
+        originalFileName: 'original.mp4',
+        maxUploadSizeBytes: 40,
+      });
+
+      expect(mockClient.uploadFile.mock.calls[0][0].maxBufferSize).toBe(40);
+    });
+
     it('passes onProgress through to tg.uploadFile', async () => {
       mockClient.sendFile.mockResolvedValue(makeMessage({ id: 60 }));
       const onProgress = jest.fn();
 
       await uploadVideo('me', {
-        buffer: Buffer.from('video-bytes'),
+        videoPath: '/tmp/video.mp4',
+        videoSize: 11,
         originalFileName: 'original.mp4',
         onProgress,
       });
@@ -645,9 +684,9 @@ describe('telegram-client', () => {
       mockProbeVideoMetadata.mockResolvedValue({ duration: 12, width: 1920, height: 1080 });
       mockClient.sendFile.mockResolvedValue(makeMessage({ id: 59 }));
 
-      await uploadVideo('me', { buffer: Buffer.from('video-bytes'), originalFileName: 'original.mp4' });
+      await uploadVideo('me', { videoPath: '/tmp/video.mp4', videoSize: 11, originalFileName: 'original.mp4' });
 
-      expect(mockProbeVideoMetadata).toHaveBeenCalledWith(Buffer.from('video-bytes'));
+      expect(mockProbeVideoMetadata).toHaveBeenCalledWith('/tmp/video.mp4');
       const options = mockClient.sendFile.mock.calls[0][1];
       expect(options.attributes).toHaveLength(2);
       expect(options.attributes[1]).toMatchObject({
@@ -663,7 +702,7 @@ describe('telegram-client', () => {
       mockProbeVideoMetadata.mockResolvedValue(null);
       mockClient.sendFile.mockResolvedValue(makeMessage({ id: 60 }));
 
-      await uploadVideo('me', { buffer: Buffer.from('video-bytes'), originalFileName: 'original.mp4' });
+      await uploadVideo('me', { videoPath: '/tmp/video.mp4', videoSize: 11, originalFileName: 'original.mp4' });
 
       const options = mockClient.sendFile.mock.calls[0][1];
       expect(options.attributes).toHaveLength(1);
@@ -673,7 +712,8 @@ describe('telegram-client', () => {
       mockClient.sendFile.mockResolvedValue(makeMessage({ id: 56 }));
 
       await uploadVideo('me', {
-        buffer: Buffer.from('video-bytes'),
+        videoPath: '/tmp/video.mp4',
+        videoSize: 11,
         originalFileName: 'original.mp4',
       });
 
@@ -692,7 +732,7 @@ describe('telegram-client', () => {
       expect(mockClient.getMessages).toHaveBeenCalledTimes(1);
 
       mockClient.sendFile.mockResolvedValue(makeMessage({ id: 57 }));
-      await uploadVideo('me', { buffer: Buffer.from('x'), originalFileName: 'a.mp4' });
+      await uploadVideo('me', { videoPath: '/tmp/a.mp4', videoSize: 1, originalFileName: 'a.mp4' });
 
       await getVideoMessage('chatCache2', 1);
       expect(mockClient.getMessages).toHaveBeenCalledTimes(2);
@@ -704,7 +744,11 @@ describe('telegram-client', () => {
       mockClient.getDialogs.mockResolvedValue([]);
       mockClient.sendFile.mockResolvedValue(makeMessage({ id: 58 }));
 
-      const result = await uploadVideo('coldChannel', { buffer: Buffer.from('x'), originalFileName: 'a.mp4' });
+      const result = await uploadVideo('coldChannel', {
+        videoPath: '/tmp/a.mp4',
+        videoSize: 1,
+        originalFileName: 'a.mp4',
+      });
 
       expect(mockClient.getDialogs).toHaveBeenCalledTimes(1);
       expect(mockClient.getEntity).toHaveBeenCalledTimes(2);
@@ -717,7 +761,7 @@ describe('telegram-client', () => {
       mockClient.getDialogs.mockResolvedValue([]);
 
       await expect(
-        uploadVideo('unresolvableChannel', { buffer: Buffer.from('x'), originalFileName: 'a.mp4' }),
+        uploadVideo('unresolvableChannel', { videoPath: '/tmp/a.mp4', videoSize: 1, originalFileName: 'a.mp4' }),
       ).rejects.toThrow(/unresolvableChannel/);
       expect(mockClient.sendFile).not.toHaveBeenCalled();
     });

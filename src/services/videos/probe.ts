@@ -1,8 +1,4 @@
 import { execFile } from 'child_process';
-import crypto from 'crypto';
-import fs from 'fs/promises';
-import os from 'os';
-import path from 'path';
 import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
@@ -17,13 +13,9 @@ type FfprobeOutput = { format?: { duration?: string }; streams?: FfprobeStream[]
 // sem thumbnail), então todo upload sai com duration/width/height zerados a
 // menos que a gente forneça um DocumentAttributeVideo explícito. `ffprobe`
 // precisa de acesso seekable ao arquivo (o moov atom de um MP4 pode estar no
-// fim), por isso os bytes são gravados num arquivo temporário em vez de
-// passados por stdin.
-export async function probeVideoMetadata(buffer: Buffer): Promise<ProbedVideoMetadata | null> {
-  const tmpFilePath = path.join(os.tmpdir(), `telegram-cdn-upload-probe-${crypto.randomUUID()}.mp4`);
-
+// fim), então recebe diretamente o arquivo temporário da requisição.
+export async function probeVideoMetadata(videoPath: string): Promise<ProbedVideoMetadata | null> {
   try {
-    await fs.writeFile(tmpFilePath, buffer);
     const { stdout } = await execFileAsync('ffprobe', [
       '-v',
       'quiet',
@@ -31,7 +23,7 @@ export async function probeVideoMetadata(buffer: Buffer): Promise<ProbedVideoMet
       'json',
       '-show_format',
       '-show_streams',
-      tmpFilePath,
+      videoPath,
     ]);
 
     return parseFfprobeOutput(JSON.parse(stdout) as FfprobeOutput);
@@ -39,8 +31,6 @@ export async function probeVideoMetadata(buffer: Buffer): Promise<ProbedVideoMet
     // ffprobe ausente/falhou — upload segue sem esses atributos explícitos,
     // caindo de volta pro (incorreto, mas não fatal) default do TeleProto.
     return null;
-  } finally {
-    await fs.rm(tmpFilePath, { force: true });
   }
 }
 

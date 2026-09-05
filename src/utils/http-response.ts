@@ -1,5 +1,6 @@
 export const CHUNK_SIZE = 512 * 1024;
 export const SAFE_MIME_TYPE = /^video\/[a-z0-9.+-]+$/i;
+export const SAFE_AUDIO_MIME_TYPE = /^audio\/[a-z0-9.+-]+$/i;
 
 // HTTP headers só aceitam Latin-1, então nomes de arquivo com caracteres fora
 // desse range (CJK, emoji, etc.) precisam de um fallback ASCII em `filename=`

@@ -1,0 +1,123 @@
+import { settleUploadJob } from '@/services/audios/upload-job-settlement';
+import { createJob, failJob, setProgress } from '@/services/audios/upload-progress-store';
+import { enqueueUpload } from '@/services/audios/upload-scheduler';
+import { cleanupUploadFiles, ensureUploadTempDir, uploadTempFileName } from '@/services/upload-temp-files';
+import { getUploadMaxSize, uploadAudio } from '@/telegram-client';
+import { SAFE_AUDIO_MIME_TYPE } from '@/utils/http-response';
+import { randomUUID } from 'crypto';
+import express, { type NextFunction, type Request, type Response } from 'express';
+import multer from 'multer';
+import { z } from 'zod';
+
+const router = express.Router();
+
+const uploadBodySchema = z.object({
+  description: z.string().trim().min(1).max(1024).optional(),
+  filename: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+    z.string().trim().min(1).optional(),
+  ),
+});
+
+type UploadFiles = { file?: Express.Multer.File[] };
+
+function uploadedPaths(files: UploadFiles | undefined): string[] {
+  return Object.values(files ?? {})
+    .flat()
+    .map((file) => file.path)
+    .filter(Boolean);
+}
+
+// multer reporta arquivo grande demais via `next(err)`, não via req.files —
+// precisa de um wrapper pra virar um 400 claro em vez do handler de erro
+// padrão do Express.
+async function parseUpload(req: Request, res: Response, next: NextFunction): Promise<void> {
+  let maxUploadSizeBytes: number;
+  try {
+    maxUploadSizeBytes = await getUploadMaxSize();
+  } catch {
+    res.status(503).json({ error: 'Não foi possível consultar o plano atual da conta Telegram' });
+    return;
+  }
+
+  const upload = multer({
+    storage: multer.diskStorage({
+      destination: ensureUploadTempDir(),
+      filename: (_req, _file, callback) => callback(null, uploadTempFileName()),
+    }),
+    limits: { fileSize: maxUploadSizeBytes },
+  });
+  const uploadFields = upload.fields([{ name: 'file', maxCount: 1 }]);
+  res.locals.maxUploadSizeBytes = maxUploadSizeBytes;
+
+  uploadFields(req, res, (err: unknown) => {
+    if (!err) {
+      next();
+      return;
+    }
+    const message =
+      err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE'
+        ? `Arquivo maior que o limite de ${maxUploadSizeBytes} bytes (mesmo teto do Telegram)`
+        : (err as Error).message;
+    res.status(400).json({ error: message });
+  });
+}
+
+// O upload real pro Telegram pode levar minutos em arquivos grandes — em vez
+// de segurar a resposta HTTP até o fim (o que estoura o timeout de clientes
+// como o Insomnia), a rota responde 202 com um job_id assim que o arquivo
+// termina de chegar aqui, e o envio pro Telegram continua em background.
+// Progresso/resultado final ficam disponíveis via
+// GET /audio/upload/progress/:jobId (src/routes/audio/upload-progress/route.ts).
+router.post('/audio/upload/:chatId', parseUpload, (req: Request, res: Response) => {
+  const files = req.files as UploadFiles | undefined;
+  const file = files?.file?.[0];
+  if (!file) {
+    void cleanupUploadFiles(uploadedPaths(files));
+    res.status(400).json({ error: 'Campo "file" é obrigatório' });
+    return;
+  }
+  if (!SAFE_AUDIO_MIME_TYPE.test(file.mimetype)) {
+    void cleanupUploadFiles(uploadedPaths(files));
+    res.status(400).json({ error: `Tipo de arquivo não suportado: ${file.mimetype}` });
+    return;
+  }
+
+  const parsedBody = uploadBodySchema.safeParse(req.body);
+  if (!parsedBody.success) {
+    void cleanupUploadFiles(uploadedPaths(files));
+    res.status(400).json({ error: parsedBody.error.message });
+    return;
+  }
+
+  const { chatId } = req.params;
+  const { description, filename } = parsedBody.data;
+  const originalFileName = filename ?? file.originalname;
+  const tempFiles = [file.path];
+  const base = `${req.protocol}://${req.get('host')}`;
+
+  const jobId = randomUUID();
+  createJob(jobId, chatId);
+  res.status(202).json({ job_id: jobId, status: 'queued' });
+
+  // enqueueUpload (src/services/audios/upload-scheduler.ts) limita quantos
+  // uploads reais (tg.uploadFile/tg.sendFile) rodam ao mesmo tempo (mesmo
+  // teto de UPLOAD_CONCURRENCY_LIMIT usado por vídeo, mas fila própria — não
+  // compete por vaga com um upload de vídeo em andamento) e é o que permite
+  // pausar, retomar ou cancelar um job ainda em fila.
+  enqueueUpload(jobId, () =>
+    uploadAudio(chatId, {
+      audioPath: file.path,
+      audioSize: file.size,
+      originalFileName,
+      maxUploadSizeBytes: res.locals.maxUploadSizeBytes as number,
+      description,
+      onProgress: (progress) => setProgress(jobId, progress),
+    }),
+  )
+    .then((audio) => audio && settleUploadJob(jobId, chatId, base, audio))
+    .catch((err) => failJob(jobId, (err as Error).message))
+    .finally(() => cleanupUploadFiles(tempFiles));
+});
+
+export = router;

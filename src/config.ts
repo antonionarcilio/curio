@@ -24,6 +24,13 @@ const envSchema = z.object({
   // pensa ao configurar retenção — convertido pra ms abaixo, único lugar do
   // código que precisa da unidade em ms (setTimeout em upload-progress-store.ts).
   UPLOAD_PROGRESS_TTL_MINUTES: numberWithDefault(5),
+  // Também governa a fila de upload de áudio — vídeo e áudio têm filas
+  // independentes (um upload de vídeo grande não bloqueia um de áudio, nem
+  // vice-versa), mas ambas aplicam este mesmo teto de concorrência. Isso
+  // significa que o total combinado (um upload de vídeo + um de áudio ao
+  // mesmo tempo, por exemplo) pode chegar ao dobro deste valor — não é um
+  // limite único global sobre a conta Telegram, só o mesmo número aplicado a
+  // cada fila separadamente.
   UPLOAD_CONCURRENCY_LIMIT: numberWithDefault(1),
 });
 

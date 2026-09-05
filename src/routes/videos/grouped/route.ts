@@ -1,4 +1,4 @@
-import { filterVideos } from '@/services/videos/filters';
+import { filterMediaItems } from '@/services/media-filters';
 import { createSignedUrl } from '@/signed-url';
 import { listAllVideos } from '@/telegram-client';
 import { isPaginationRequested, paginate, paginationQuerySchema, resolvePagination } from '@/utils/pagination';
@@ -29,7 +29,7 @@ router.get('/videos/grouped', async (req: Request, res: Response) => {
     const base = `${req.protocol}://${req.get('host')}`;
 
     const videos = await listAllVideos({ perChatLimit: limit });
-    const filtered = filterVideos(videos, {
+    const filtered = filterMediaItems(videos, {
       chatId: chat_id,
       chatTitle: chat_title,
       fileName: file_name,
@@ -37,7 +37,7 @@ router.get('/videos/grouped', async (req: Request, res: Response) => {
     });
 
     const withUrls = (items: typeof filtered) =>
-      items.map((video) => ({ ...video, url: createSignedUrl(base, video.chat_id, video.message_id) }));
+      items.map((video) => ({ ...video, url: createSignedUrl(base, 'video', video.chat_id, video.message_id) }));
 
     if (!isPaginationRequested(paginationQuery)) {
       res.json(withUrls(filtered));

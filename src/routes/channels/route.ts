@@ -1,4 +1,4 @@
-import { extractDigits } from '@/services/videos/filters';
+import { extractDigits } from '@/services/media-filters';
 import { listChannels } from '@/telegram-client';
 import { isPaginationRequested, paginate, paginationQuerySchema, resolvePagination } from '@/utils/pagination';
 import { includesSearchTerm } from '@/utils/text-search';

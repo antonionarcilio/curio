@@ -1,8 +1,8 @@
-import { filterByVideoText } from '@/services/videos/filters';
-import { resolveThumbnails, thumbnailQuerySchema } from '@/services/videos/thumbnails';
+import { filterByMediaText } from '@/services/media-filters';
+import { resolveThumbnails, thumbnailQuerySchema } from '@/services/thumbnails';
 import { createSignedUrl } from '@/signed-url';
 import type { ChannelVideoItem } from '@/telegram-client';
-import { listVideos } from '@/telegram-client';
+import { getVideoThumbnail, listVideos } from '@/telegram-client';
 import {
   buildPageEnvelope,
   isPaginationRequested,
@@ -49,7 +49,7 @@ router.get('/videos/by/:chatId', async (req: Request, res: Response) => {
 async function buildFilteredResponse(chatId: string, query: ChatVideosQuery, base: string) {
   const { limit, file_name, description, thumbnail, ...paginationQuery } = query;
   const { items } = await listVideos(chatId, { limit, offset: 0 });
-  const filtered = filterByVideoText(items, { fileName: file_name, description });
+  const filtered = filterByMediaText(items, { fileName: file_name, description });
 
   if (!isPaginationRequested(paginationQuery)) {
     return { chat_id: chatId, data: await decorate(filtered, chatId, thumbnail, base) };
@@ -75,8 +75,8 @@ async function buildNativePageResponse(chatId: string, query: ChatVideosQuery, b
 }
 
 async function decorate(items: ChannelVideoItem[], chatId: string, thumbnail: boolean, base: string) {
-  const resolved = await resolveThumbnails(items, chatId, thumbnail);
-  return resolved.map((video) => ({ ...video, url: createSignedUrl(base, chatId, video.message_id) }));
+  const resolved = await resolveThumbnails(items, chatId, thumbnail, getVideoThumbnail);
+  return resolved.map((video) => ({ ...video, url: createSignedUrl(base, 'video', chatId, video.message_id) }));
 }
 
 export = router;

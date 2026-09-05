@@ -4,8 +4,8 @@ const mockEditVideoCaption = jest.fn();
 const mockDeleteVideoMessage = jest.fn();
 
 jest.mock('@/telegram-client', () => ({
-  editVideoCaption: mockEditVideoCaption,
-  deleteVideoMessage: mockDeleteVideoMessage,
+  editMessageCaption: mockEditVideoCaption,
+  deleteMessage: mockDeleteVideoMessage,
 }));
 
 import deleteVideoRouter from '@/routes/video/delete/route';

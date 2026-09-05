@@ -29,8 +29,10 @@ jest.mock('teleproto', () => ({
   TelegramClient: jest.fn(() => mockClient),
   Api: {
     InputMessagesFilterVideo: jest.fn(() => ({})),
+    InputMessagesFilterMusic: jest.fn(() => ({})),
     DocumentAttributeFilename: jest.fn((opts) => ({ className: 'DocumentAttributeFilename', ...opts })),
     DocumentAttributeVideo: jest.fn((opts) => ({ className: 'DocumentAttributeVideo', ...opts })),
+    DocumentAttributeAudio: jest.fn((opts) => ({ className: 'DocumentAttributeAudio', ...opts })),
   },
 }));
 
@@ -47,20 +49,31 @@ jest.mock('@/services/videos/probe', () => ({
   probeVideoMetadata: mockProbeVideoMetadata,
 }));
 
+const mockProbeAudioMetadata = jest.fn();
+jest.mock('@/services/audios/probe', () => ({
+  probeAudioMetadata: mockProbeAudioMetadata,
+}));
+
 import {
   client,
-  deleteVideoMessage,
-  editVideoCaption,
+  deleteMessage,
+  editMessageCaption,
   ensureConnected,
+  getAudioMessage,
+  getAudioThumbnail,
+  getChannelAudios,
   getChannelInfo,
   getChannelVideos,
   getMyProfile,
   getUploadMaxSize,
   getVideoMessage,
   getVideoThumbnail,
+  listAllAudios,
   listAllVideos,
+  listAudios,
   listChannels,
   listVideos,
+  uploadAudio,
   uploadVideo,
 } from '@/telegram-client';
 import { clearAllCaches } from '@/utils/ttl-cache';
@@ -91,6 +104,28 @@ function makeMessage(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function makeAudioDocument(overrides: Record<string, unknown> = {}) {
+  return {
+    size: 2048,
+    mimeType: 'audio/mpeg',
+    attributes: [
+      { className: 'DocumentAttributeFilename', fileName: 'song.mp3' },
+      { className: 'DocumentAttributeAudio', duration: 180, title: 'Song Title', performer: 'The Artist' },
+    ],
+    thumbs: [{ className: 'PhotoSize', type: 'x', w: 320, h: 320, size: 8000 }],
+    ...overrides,
+  };
+}
+
+function makeAudioMessage(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    date: 1700000000,
+    media: { document: makeAudioDocument() },
+    ...overrides,
+  };
+}
+
 function withTotal<T>(items: T[], total?: number) {
   return Object.assign(items, { total: total ?? items.length });
 }
@@ -103,6 +138,7 @@ describe('telegram-client', () => {
     clearAllCaches();
     mockClient.uploadFile.mockResolvedValue(UPLOADED_FILE_HANDLE);
     mockProbeVideoMetadata.mockResolvedValue(null);
+    mockProbeAudioMetadata.mockResolvedValue(null);
   });
 
   it('client is the mocked TelegramClient instance', () => {
@@ -767,10 +803,327 @@ describe('telegram-client', () => {
     });
   });
 
-  describe('editVideoCaption', () => {
+  describe('getAudioMessage', () => {
+    it('extracts the audio document from the message', async () => {
+      mockClient.getMessages.mockResolvedValue([makeAudioMessage()]);
+      const result = await getAudioMessage('chat1', 1);
+      expect(result.mimeType).toBe('audio/mpeg');
+      expect(result.fileName).toBe('song.mp3');
+      expect(result.size).toBe(2048);
+    });
+
+    it('throws "Mensagem não encontrada" when getMessages returns empty', async () => {
+      mockClient.getMessages.mockResolvedValue([]);
+      await expect(getAudioMessage('chat1', 2)).rejects.toThrow('Mensagem não encontrada');
+    });
+
+    it('throws "Mensagem não contém um áudio" when message has no audio document', async () => {
+      mockClient.getMessages.mockResolvedValue([makeAudioMessage({ media: undefined })]);
+      await expect(getAudioMessage('chat1', 3)).rejects.toThrow('Mensagem não contém um áudio');
+    });
+
+    it('treats a voice note (DocumentAttributeAudio.voice) as not-an-audio-file', async () => {
+      mockClient.getMessages.mockResolvedValue([
+        makeAudioMessage({
+          media: {
+            document: makeAudioDocument({
+              attributes: [{ className: 'DocumentAttributeAudio', duration: 5, voice: true }],
+            }),
+          },
+        }),
+      ]);
+      await expect(getAudioMessage('chat1', 4)).rejects.toThrow('Mensagem não contém um áudio');
+    });
+
+    it('falls back to "<id>.mp3" filename when no DocumentAttributeFilename is present', async () => {
+      mockClient.getMessages.mockResolvedValue([
+        makeAudioMessage({
+          id: 99,
+          media: { document: { size: 10, mimeType: 'audio/mpeg', attributes: [] } },
+        }),
+      ]);
+      const result = await getAudioMessage('chat1', 99);
+      expect(result.fileName).toBe('99.mp3');
+    });
+
+    it('caches the result for the same chatId:messageId key (getMessages called once)', async () => {
+      mockClient.getMessages.mockResolvedValue([makeAudioMessage({ id: 42 })]);
+      await getAudioMessage('chatCacheAudio', 42);
+      await getAudioMessage('chatCacheAudio', 42);
+      expect(mockClient.getMessages).toHaveBeenCalledTimes(1);
+    });
+
+    it('warms the entity cache via getDialogs and retries when getEntity fails cold, then succeeds', async () => {
+      mockClient.getEntity.mockRejectedValueOnce(new Error('Could not find the input entity for {}'));
+      mockClient.getEntity.mockResolvedValueOnce({ id: 1004325653681 });
+      mockClient.getDialogs.mockResolvedValue([]);
+      mockClient.getMessages.mockResolvedValue([makeAudioMessage({ id: 7 })]);
+
+      const result = await getAudioMessage('coldChatAudio', 7);
+
+      expect(mockClient.getDialogs).toHaveBeenCalledTimes(1);
+      expect(mockClient.getEntity).toHaveBeenCalledTimes(2);
+      expect(result.fileName).toBe('song.mp3');
+    });
+  });
+
+  describe('getAudioThumbnail', () => {
+    it('downloads the largest PhotoSize (e.g. album art) and returns it as a jpeg data URI', async () => {
+      mockClient.getMessages.mockResolvedValue([makeAudioMessage({ id: 20 })]);
+      mockClient.downloadMedia.mockResolvedValue(Buffer.from('jpeg-bytes'));
+
+      const result = await getAudioThumbnail('chatThumbAudio', 20);
+
+      expect(result).toEqual({
+        thumbnail: `data:image/jpeg;base64,${Buffer.from('jpeg-bytes').toString('base64')}`,
+        thumbnail_width: 320,
+        thumbnail_height: 320,
+      });
+    });
+
+    it('rejects with the offending ids when the document has no downloadable thumbnail', async () => {
+      mockClient.getMessages.mockResolvedValue([
+        makeAudioMessage({ id: 22, media: { document: makeAudioDocument({ thumbs: [] }) } }),
+      ]);
+
+      await expect(getAudioThumbnail('chatNoThumbAudio', 22)).rejects.toThrow(/chatNoThumbAudio:22.*PhotoSize/s);
+      expect(mockClient.downloadMedia).not.toHaveBeenCalled();
+    });
+
+    it('rejects when downloadMedia returns no bytes', async () => {
+      mockClient.getMessages.mockResolvedValue([makeAudioMessage({ id: 23 })]);
+      mockClient.downloadMedia.mockResolvedValue(undefined);
+
+      await expect(getAudioThumbnail('chatEmptyThumbAudio', 23)).rejects.toThrow(/chatEmptyThumbAudio:23/);
+    });
+  });
+
+  describe('listAudios', () => {
+    it('passes an Api.InputMessagesFilterMusic filter and maps items with total', async () => {
+      mockClient.getMessages.mockResolvedValue(
+        withTotal([makeAudioMessage({ id: 1 }), makeAudioMessage({ id: 2 })], 2),
+      );
+      const result = await listAudios('chatX', { limit: 10, offset: 0 });
+      expect(result.total).toBe(2);
+      expect(result.items).toHaveLength(2);
+      expect(result.items[0]).toEqual({
+        message_id: 1,
+        file_name: 'song.mp3',
+        size: 2048,
+        mime_type: 'audio/mpeg',
+        date: 1700000000,
+        description: null,
+        duration: 180,
+        title: 'Song Title',
+        performer: 'The Artist',
+        thumbnail_width: 320,
+        thumbnail_height: 320,
+        thumbnail: null,
+      });
+      const call = mockClient.getMessages.mock.calls[0][1];
+      expect(call).toMatchObject({ limit: 10, addOffset: 0 });
+      expect(call.filter).toBeDefined();
+    });
+
+    it('nulls duration/title/performer when the document has no DocumentAttributeAudio', async () => {
+      mockClient.getMessages.mockResolvedValue(
+        withTotal([makeAudioMessage({ media: { document: makeAudioDocument({ attributes: [] }) } })]),
+      );
+
+      const result = await listAudios('chatNoMetaAudio', { limit: 10, offset: 0 });
+
+      expect(result.items[0]).toMatchObject({ duration: null, title: null, performer: null });
+    });
+
+    it('skips voice notes (DocumentAttributeAudio.voice) as a defensive second layer over the native filter', async () => {
+      mockClient.getMessages.mockResolvedValue(
+        withTotal([
+          makeAudioMessage({
+            media: {
+              document: makeAudioDocument({
+                attributes: [{ className: 'DocumentAttributeAudio', duration: 3, voice: true }],
+              }),
+            },
+          }),
+        ]),
+      );
+
+      const result = await listAudios('chatVoiceOnly', { limit: 10, offset: 0 });
+      expect(result.items).toHaveLength(0);
+    });
+
+    it('falls back to "audio/mpeg" when the document has no mimeType', async () => {
+      mockClient.getMessages.mockResolvedValue(
+        withTotal([makeAudioMessage({ media: { document: { size: 10, mimeType: '', attributes: [] } } })]),
+      );
+      const result = await listAudios('chatZAudio', { limit: 10, offset: 0 });
+      expect(result.items[0].mime_type).toBe('audio/mpeg');
+    });
+
+    it('falls back total to items.length when getMessages result has no .total', async () => {
+      const messages = [makeAudioMessage({ id: 1 }), makeAudioMessage({ id: 2 })];
+      mockClient.getMessages.mockResolvedValue(messages);
+      const result = await listAudios('chatNoTotalAudio', { limit: 10, offset: 0 });
+      expect(result.total).toBe(2);
+    });
+  });
+
+  describe('getChannelAudios', () => {
+    it('resolves channel_title from title -> username -> chatId and delegates to listAudios', async () => {
+      mockClient.getEntity.mockResolvedValue({ title: 'My Channel' });
+      mockClient.getMessages.mockResolvedValue(withTotal([]));
+      const result = await getChannelAudios('chat1', { limit: 5, offset: 0 });
+      expect(result).toEqual({ channel_id: 'chat1', channel_title: 'My Channel', items: [], total: 0 });
+    });
+  });
+
+  describe('listAllAudios', () => {
+    it('applies perChatLimit per chat, not globally', async () => {
+      mockClient.getDialogs.mockResolvedValue([
+        { id: 1, title: 'Chat 1' },
+        { id: 2, title: 'Chat 2' },
+      ]);
+      mockClient.getMessages.mockResolvedValue(
+        withTotal([makeAudioMessage({ id: 1 }), makeAudioMessage({ id: 2 }), makeAudioMessage({ id: 3 })]),
+      );
+      const audios = await listAllAudios({ perChatLimit: 2 });
+      const chatIds = new Set(audios.map((a) => a.chat_id));
+      expect(chatIds).toEqual(new Set(['1', '2']));
+    });
+
+    it('ignores a chat whose getMessages call fails and continues to the next', async () => {
+      mockClient.getDialogs.mockResolvedValue([
+        { id: 1, title: 'Broken chat' },
+        { id: 2, title: 'Working chat' },
+      ]);
+      mockClient.getMessages.mockImplementation(async (chatId: unknown) => {
+        if (chatId === 1) throw new Error('boom');
+        return withTotal([makeAudioMessage({ id: 10 })]);
+      });
+      const audios = await listAllAudios({ perChatLimit: 10 });
+      expect(audios).toHaveLength(1);
+      expect(audios[0].chat_id).toBe('2');
+    });
+
+    it('skips dialogs with a falsy id', async () => {
+      mockClient.getDialogs.mockResolvedValue([
+        { id: 0, title: 'No id' },
+        { id: 7, title: 'Has id' },
+      ]);
+      mockClient.getMessages.mockResolvedValue(withTotal([makeAudioMessage({ id: 1 })]));
+      const audios = await listAllAudios({ perChatLimit: 10 });
+      expect(audios).toHaveLength(1);
+      expect(audios[0].chat_id).toBe('7');
+    });
+
+    it('defaults perChatLimit to 100 when called without arguments', async () => {
+      mockClient.getDialogs.mockResolvedValue([{ id: 1, title: 'Chat 1' }]);
+      mockClient.getMessages.mockResolvedValue(withTotal([makeAudioMessage({ id: 1 })]));
+      await listAllAudios();
+      const call = mockClient.getMessages.mock.calls[0][1];
+      expect(call).toMatchObject({ limit: 100 });
+    });
+  });
+
+  describe('uploadAudio', () => {
+    it('sends the file via sendFile without forceDocument and returns the metadata', async () => {
+      mockClient.sendFile.mockResolvedValue(
+        makeAudioMessage({
+          id: 55,
+          media: {
+            document: {
+              size: 4096,
+              mimeType: 'audio/mpeg',
+              attributes: [{ className: 'DocumentAttributeFilename', fileName: 'original.mp3' }],
+            },
+          },
+        }),
+      );
+
+      const result = await uploadAudio('me', {
+        audioPath: '/tmp/audio.mp3',
+        audioSize: 11,
+        originalFileName: 'original.mp3',
+        description: 'uma descrição',
+      });
+
+      expect(mockClient.uploadFile).toHaveBeenCalledTimes(1);
+      const uploadFileParams = mockClient.uploadFile.mock.calls[0][0];
+      expect(uploadFileParams.file).toMatchObject({ name: 'original.mp3', size: 11, path: '/tmp/audio.mp3' });
+
+      expect(mockClient.sendFile).toHaveBeenCalledTimes(1);
+      const [chatId, options] = mockClient.sendFile.mock.calls[0];
+      expect(chatId).toBe('me');
+      expect(options.caption).toBe('uma descrição');
+      expect(options.forceDocument).toBe(false);
+      // Ao contrário de vídeo, não existe supportsStreaming para
+      // DocumentAttributeAudio — a opção nem deve ser passada.
+      expect(options.supportsStreaming).toBeUndefined();
+      expect(options.file).toBe(UPLOADED_FILE_HANDLE);
+      expect(options.attributes[0]).toMatchObject({ fileName: 'original.mp3' });
+
+      expect(result).toEqual({
+        message_id: 55,
+        file_name: 'original.mp3',
+        size: 4096,
+        mime_type: 'audio/mpeg',
+        date: 1700000000,
+      });
+    });
+
+    it('adds a DocumentAttributeAudio with the probed duration/title/performer when ffprobe succeeds', async () => {
+      mockProbeAudioMetadata.mockResolvedValue({ duration: 180, title: 'Song Title', performer: 'The Artist' });
+      mockClient.sendFile.mockResolvedValue(makeAudioMessage({ id: 59 }));
+
+      await uploadAudio('me', { audioPath: '/tmp/audio.mp3', audioSize: 11, originalFileName: 'original.mp3' });
+
+      expect(mockProbeAudioMetadata).toHaveBeenCalledWith('/tmp/audio.mp3');
+      const options = mockClient.sendFile.mock.calls[0][1];
+      expect(options.attributes).toHaveLength(2);
+      expect(options.attributes[1]).toMatchObject({
+        className: 'DocumentAttributeAudio',
+        duration: 180,
+        title: 'Song Title',
+        performer: 'The Artist',
+      });
+    });
+
+    it('omits DocumentAttributeAudio when ffprobe fails/is unavailable', async () => {
+      mockProbeAudioMetadata.mockResolvedValue(null);
+      mockClient.sendFile.mockResolvedValue(makeAudioMessage({ id: 60 }));
+
+      await uploadAudio('me', { audioPath: '/tmp/audio.mp3', audioSize: 11, originalFileName: 'original.mp3' });
+
+      const options = mockClient.sendFile.mock.calls[0][1];
+      expect(options.attributes).toHaveLength(1);
+    });
+
+    it('uploads without an optional caption', async () => {
+      mockClient.sendFile.mockResolvedValue(makeAudioMessage({ id: 56 }));
+
+      await uploadAudio('me', { audioPath: '/tmp/audio.mp3', audioSize: 11, originalFileName: 'original.mp3' });
+
+      const options = mockClient.sendFile.mock.calls[0][1];
+      expect(options.caption).toBeUndefined();
+    });
+
+    it('clears all caches after a successful upload', async () => {
+      mockClient.getMessages.mockResolvedValue([makeAudioMessage({ id: 1 })]);
+      await getAudioMessage('chatCacheAudio2', 1);
+      expect(mockClient.getMessages).toHaveBeenCalledTimes(1);
+
+      mockClient.sendFile.mockResolvedValue(makeAudioMessage({ id: 57 }));
+      await uploadAudio('me', { audioPath: '/tmp/a.mp3', audioSize: 1, originalFileName: 'a.mp3' });
+
+      await getAudioMessage('chatCacheAudio2', 1);
+      expect(mockClient.getMessages).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('editMessageCaption', () => {
     it('calls editMessage with the message id and new caption', async () => {
       mockClient.editMessage.mockResolvedValue(makeMessage());
-      await editVideoCaption('chat1', 10, 'nova descrição');
+      await editMessageCaption('chat1', 10, 'nova descrição');
       expect(mockClient.editMessage).toHaveBeenCalledWith('chat1', { message: 10, text: 'nova descrição' });
     });
 
@@ -780,7 +1133,7 @@ describe('telegram-client', () => {
       expect(mockClient.getMessages).toHaveBeenCalledTimes(1);
 
       mockClient.editMessage.mockResolvedValue(makeMessage());
-      await editVideoCaption('chatCache3', 2, 'nova descrição');
+      await editMessageCaption('chatCache3', 2, 'nova descrição');
 
       await getVideoMessage('chatCache3', 2);
       expect(mockClient.getMessages).toHaveBeenCalledTimes(2);
@@ -792,7 +1145,7 @@ describe('telegram-client', () => {
       mockClient.getDialogs.mockResolvedValue([]);
       mockClient.editMessage.mockResolvedValue(makeMessage());
 
-      await editVideoCaption('coldChannelEdit', 10, 'nova descrição');
+      await editMessageCaption('coldChannelEdit', 10, 'nova descrição');
 
       expect(mockClient.getDialogs).toHaveBeenCalledTimes(1);
       expect(mockClient.getEntity).toHaveBeenCalledTimes(2);
@@ -804,17 +1157,17 @@ describe('telegram-client', () => {
       mockClient.getEntity.mockRejectedValueOnce(new Error('Could not find the input entity for {}'));
       mockClient.getDialogs.mockResolvedValue([]);
 
-      await expect(editVideoCaption('unresolvableChannelEdit', 10, 'nova descrição')).rejects.toThrow(
+      await expect(editMessageCaption('unresolvableChannelEdit', 10, 'nova descrição')).rejects.toThrow(
         /unresolvableChannelEdit/,
       );
       expect(mockClient.editMessage).not.toHaveBeenCalled();
     });
   });
 
-  describe('deleteVideoMessage', () => {
+  describe('deleteMessage', () => {
     it('calls deleteMessages with the message id and revoke: true', async () => {
       mockClient.deleteMessages.mockResolvedValue(undefined);
-      await deleteVideoMessage('chat1', 10);
+      await deleteMessage('chat1', 10);
       expect(mockClient.deleteMessages).toHaveBeenCalledWith('chat1', [10], { revoke: true });
     });
 
@@ -824,7 +1177,7 @@ describe('telegram-client', () => {
       expect(mockClient.getMessages).toHaveBeenCalledTimes(1);
 
       mockClient.deleteMessages.mockResolvedValue(undefined);
-      await deleteVideoMessage('chatCache4', 3);
+      await deleteMessage('chatCache4', 3);
 
       await getVideoMessage('chatCache4', 3);
       expect(mockClient.getMessages).toHaveBeenCalledTimes(2);
@@ -836,7 +1189,7 @@ describe('telegram-client', () => {
       mockClient.getDialogs.mockResolvedValue([]);
       mockClient.deleteMessages.mockResolvedValue(undefined);
 
-      await deleteVideoMessage('coldChannelDelete', 10);
+      await deleteMessage('coldChannelDelete', 10);
 
       expect(mockClient.getDialogs).toHaveBeenCalledTimes(1);
       expect(mockClient.getEntity).toHaveBeenCalledTimes(2);
@@ -848,7 +1201,7 @@ describe('telegram-client', () => {
       mockClient.getEntity.mockRejectedValueOnce(new Error('Could not find the input entity for {}'));
       mockClient.getDialogs.mockResolvedValue([]);
 
-      await expect(deleteVideoMessage('unresolvableChannelDelete', 10)).rejects.toThrow(/unresolvableChannelDelete/);
+      await expect(deleteMessage('unresolvableChannelDelete', 10)).rejects.toThrow(/unresolvableChannelDelete/);
       expect(mockClient.deleteMessages).not.toHaveBeenCalled();
     });
   });

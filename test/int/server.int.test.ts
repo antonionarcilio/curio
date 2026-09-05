@@ -23,7 +23,7 @@ jest.mock('@/telegram-client', () => ({
   }),
   getMyProfile: mockGetMyProfile,
   listVideos: jest.fn().mockResolvedValue({ items: [], total: 0 }),
-  editVideoCaption: jest.fn().mockResolvedValue(undefined),
+  editMessageCaption: jest.fn().mockResolvedValue(undefined),
 }));
 
 import { buildApp } from '@/server';
@@ -74,7 +74,7 @@ describe('requireToken (HTTP integration via buildApp)', () => {
   });
 
   it('lets a valid signed URL through on the streaming route without an Authorization header', async () => {
-    const url = createSignedUrl('http://x', 'chat1', 1);
+    const url = createSignedUrl('http://x', 'video', 'chat1', 1);
     const { pathname, searchParams } = new URL(url);
     const res = await request(buildApp())
       .get(pathname)
@@ -87,7 +87,7 @@ describe('requireToken (HTTP integration via buildApp)', () => {
   });
 
   it('rejects the same signed query params reused against a discovery route', async () => {
-    const url = createSignedUrl('http://x', 'chat1', 1);
+    const url = createSignedUrl('http://x', 'video', 'chat1', 1);
     const { searchParams } = new URL(url);
     const res = await request(buildApp())
       .get('/api/v1/videos/grouped')
@@ -100,7 +100,7 @@ describe('requireToken (HTTP integration via buildApp)', () => {
 
   it('rejects expired signed query params on the streaming route', async () => {
     jest.useFakeTimers().setSystemTime(0);
-    const url = createSignedUrl('http://x', 'chat1', 1);
+    const url = createSignedUrl('http://x', 'video', 'chat1', 1);
     const { pathname, searchParams } = new URL(url);
     jest.setSystemTime(3600 * 1000 + 1000);
     const res = await request(buildApp())

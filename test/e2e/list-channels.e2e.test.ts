@@ -1,4 +1,4 @@
-import { extractDigits } from '@/services/videos/filters';
+import { extractDigits } from '@/services/media-filters';
 import { client, ensureConnected } from '@/telegram-client';
 import request from 'supertest';
 import { app, authed } from './helpers/http-client';

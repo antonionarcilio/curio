@@ -66,7 +66,7 @@ describe.each(TARGETS)('GET /api/v1/video/stream/:chatId/:messageId (e2e) — $l
   }
 
   it('accepts a signed url with no Authorization header', async () => {
-    const signedUrl = createSignedUrl('', chatId, messageId);
+    const signedUrl = createSignedUrl('', 'video', chatId, messageId);
 
     const res = await request(app).get(signedUrl).set('Range', 'bytes=0-1023');
 
@@ -74,7 +74,7 @@ describe.each(TARGETS)('GET /api/v1/video/stream/:chatId/:messageId (e2e) — $l
   });
 
   it('rejects a tampered signature with 401', async () => {
-    const signedUrl = createSignedUrl('', chatId, messageId).replace(/sig=[0-9a-f]+/, 'sig=0000000000000000');
+    const signedUrl = createSignedUrl('', 'video', chatId, messageId).replace(/sig=[0-9a-f]+/, 'sig=0000000000000000');
 
     const res = await request(app).get(signedUrl).set('Range', 'bytes=0-1023');
 

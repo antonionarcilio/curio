@@ -9,7 +9,7 @@ const mockGetUploadMaxSize = jest.fn();
 // e barato; os outros testes deste arquivo usam buffers bem menores que 20.
 jest.mock('@/telegram-client', () => ({
   uploadVideo: mockUploadVideo,
-  deleteVideoMessage: mockDeleteVideoMessage,
+  deleteMessage: mockDeleteVideoMessage,
   getUploadMaxSize: mockGetUploadMaxSize,
 }));
 

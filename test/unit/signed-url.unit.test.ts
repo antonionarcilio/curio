@@ -13,17 +13,28 @@ describe('signed-url', () => {
 
   describe('createSignedUrl', () => {
     it('produces a url of the expected shape with exp ~ now + 1h', () => {
-      const url = createSignedUrl('http://localhost:8787', 'chat1', 42);
+      const url = createSignedUrl('http://localhost:8787', 'video', 'chat1', 42);
       const match = /^http:\/\/localhost:8787\/api\/v1\/video\/stream\/chat1\/42\?exp=(\d+)&sig=([0-9a-f]+)$/.exec(url);
       expect(match).not.toBeNull();
       const exp = Number(match![1]);
       expect(exp).toBe(NOW + 3600);
     });
+
+    it('points at /api/v1/audio/stream when mediaType is audio', () => {
+      const url = createSignedUrl('http://localhost:8787', 'audio', 'chat1', 42);
+      expect(url).toMatch(/^http:\/\/localhost:8787\/api\/v1\/audio\/stream\/chat1\/42\?/);
+    });
+
+    it('produces the same signature for video and audio (path is not signed)', () => {
+      const videoUrl = new URL(createSignedUrl('http://x', 'video', 'chat1', 42));
+      const audioUrl = new URL(createSignedUrl('http://x', 'audio', 'chat1', 42));
+      expect(videoUrl.searchParams.get('sig')).toBe(audioUrl.searchParams.get('sig'));
+    });
   });
 
   describe('verifySignedUrl', () => {
     function signedParams(chatId: string, messageId: string | number) {
-      const url = createSignedUrl('http://x', chatId, messageId);
+      const url = createSignedUrl('http://x', 'video', chatId, messageId);
       const parsed = new URL(url);
       return {
         exp: parsed.searchParams.get('exp')!,

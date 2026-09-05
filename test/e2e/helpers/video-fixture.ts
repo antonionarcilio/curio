@@ -1,4 +1,4 @@
-import { deleteVideoMessage } from '@/telegram-client';
+import { deleteMessage } from '@/telegram-client';
 import path from 'path';
 import sharp from 'sharp';
 import request from 'supertest';
@@ -82,7 +82,7 @@ async function buildSmallThumbnailBuffer(): Promise<Buffer> {
 // chama a função direto, não a rota, precisamente para não depender da rota
 // que pode ser a que está quebrada.
 async function removeFixture(chatId: string, messageId: number): Promise<void> {
-  await deleteVideoMessage(chatId, messageId);
+  await deleteMessage(chatId, messageId);
 }
 
 // Limpeza pra qualquer outro arquivo e2e que não testa a rota de delete em

@@ -25,6 +25,17 @@ dados frescos.
   não são expostos.
 - **Cache**: usa o TTL das demais rotas de leitura.
 
+## `GET /api/v1/health`
+
+- **Propósito**: health check de liveness — confirma que o processo está de
+  pé e respondendo, sem tocar o Telegram.
+- **Acesso**: Privada.
+- **Query params**: nenhum. Exceção aprovada à paginação obrigatória: não é
+  uma listagem nem busca dados no Telegram, sempre retorna um único objeto
+  fixo.
+- **Resposta**: `{ status: "ok" }`.
+- **Cache**: não aplicável — não busca nada no Telegram.
+
 ## Paginação
 
 As listagens aceitam `limit`, `page` e `per_page`:

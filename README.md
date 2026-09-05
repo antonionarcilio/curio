@@ -156,7 +156,7 @@ manualmente antes e chame o script sem `--username`/`--token`.
 
 ## Rotas
 
-O servidor expõe rotas versionadas em `/api/v1`: `channels`,
+O servidor expõe rotas versionadas em `/api/v1`: `health`, `channels`,
 `videos/grouped`, `videos/by/:chatId`, `video/stream/:chatId/:messageId`,
 `video/dl/:chatId/:messageId`, `video/upload/:chatId`,
 `video/update/:chatId/:messageId`, `video/delete/:chatId/:messageId` e

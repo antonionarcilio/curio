@@ -14,6 +14,30 @@ meta:
 
     Documentação completa: `docs/ROUTES.md`.
 collection:
+  - url: '{{ _.BASE_URL }}/api/v1/health'
+    name: health
+    meta:
+      id: req_health_v1
+      created: 1784933376600
+      modified: 1784933376600
+      isPrivate: false
+      description: |-
+        Health check de liveness — confirma que o processo está de pé, sem tocar o Telegram.
+
+        Acesso: Privada.
+        Query params: nenhum. Exceção aprovada à paginação obrigatória: não é uma listagem nem busca dados no Telegram.
+        Resposta: `{ status: "ok" }`.
+      sortKey: -1784931209196
+    method: GET
+    parameters: []
+    settings: &settings
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
   - url: '{{ _.BASE_URL }}/api/v1/me'
     name: me
     meta:
@@ -31,14 +55,7 @@ collection:
       sortKey: -1784931209195
     method: GET
     parameters: []
-    settings: &settings
-      renderRequestBody: true
-      encodeUrl: true
-      followRedirects: global
-      cookies:
-        send: true
-        store: true
-      rebuildPath: true
+    settings: *settings
   - url: '{{ _.BASE_URL }}/api/v1/channels'
     name: channels
     meta:

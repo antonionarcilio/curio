@@ -330,6 +330,9 @@ exemplo) pode chegar ao dobro do valor configurado.
 - **Acesso**: Privada.
 - **Corpo**: `multipart/form-data`, em memória:
   - `file` obrigatório, somente `audio/*`.
+  - `thumbnail` opcional; capa de álbum. Deve ser `image/*` (o Telegram exige
+    JPG pequeno e rejeita valores inválidos); tipos não-imagem retornam `400`.
+    Só pode ser definida no upload — `PATCH /api/v1/audio/update` não troca a capa.
   - `description` opcional, até 1024 caracteres.
   - `filename` opcional; quando informado e não vazio, substitui o nome
     original do arquivo enviado. Se for vazio ou contiver apenas espaços, é

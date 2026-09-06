@@ -1,6 +1,7 @@
 import config from '@/config';
 import { probeAudioMetadata } from '@/services/audios/probe';
 import { clearAllCaches, withCache } from '@/utils/ttl-cache';
+import fs from 'fs/promises';
 import pLimit from 'p-limit';
 import { Api, type TelegramClient } from 'teleproto';
 import { CustomFile } from 'teleproto/client/uploads';
@@ -286,6 +287,7 @@ export type UploadAudioParams = {
   originalFileName: string;
   maxUploadSizeBytes?: number;
   description?: string;
+  thumbnailPath?: string;
   onProgress?: (progress: number) => void;
 };
 
@@ -313,6 +315,7 @@ async function sendAudioMessage(
   uploadedFile: Awaited<ReturnType<TelegramClient['uploadFile']>>,
   attributes: Api.TypeDocumentAttribute[],
   description: string | undefined,
+  thumbnailPath: string | undefined,
 ): Promise<Api.Message> {
   const tg = await ensureConnected();
   // Sem forceDocument: false o Telegram trata o anexo como um documento
@@ -321,6 +324,11 @@ async function sendAudioMessage(
   // não existe para DocumentAttributeAudio.
   return tg.sendFile(chatId, {
     file: uploadedFile,
+    // Capa de álbum: o branch de `thumb` em _fileToMedia (teleproto) não checa
+    // `instanceof CustomFile`, só `Buffer.isBuffer`, e falha com "Could not
+    // create file from [object Object]" se receber outra coisa — por isso o
+    // arquivo é lido como Buffer cru aqui, igual ao upload de vídeo.
+    thumb: thumbnailPath ? await fs.readFile(thumbnailPath) : undefined,
     caption: description,
     attributes,
     forceDocument: false,
@@ -345,7 +353,7 @@ export async function uploadAudio(chatId: string, params: UploadAudioParams): Pr
   // segue sem esse atributo em vez de falhar.
   const probed = await probeAudioMetadata(params.audioPath);
   const attributes = buildAudioUploadAttributes(params.originalFileName, probed);
-  const message = await sendAudioMessage(chatId, uploadedFile, attributes, params.description);
+  const message = await sendAudioMessage(chatId, uploadedFile, attributes, params.description, params.thumbnailPath);
 
   const audio = extractAudioDocument(message);
   if (!audio) {

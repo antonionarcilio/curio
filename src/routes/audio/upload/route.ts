@@ -3,7 +3,7 @@ import { createJob, failJob, setProgress } from '@/services/audios/upload-progre
 import { enqueueUpload } from '@/services/audios/upload-scheduler';
 import { cleanupUploadFiles, ensureUploadTempDir, uploadTempFileName } from '@/services/upload-temp-files';
 import { getUploadMaxSize, uploadAudio } from '@/telegram-client';
-import { SAFE_AUDIO_MIME_TYPE } from '@/utils/http-response';
+import { SAFE_AUDIO_MIME_TYPE, SAFE_IMAGE_MIME_TYPE } from '@/utils/http-response';
 import { randomUUID } from 'crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
@@ -19,7 +19,7 @@ const uploadBodySchema = z.object({
   ),
 });
 
-type UploadFiles = { file?: Express.Multer.File[] };
+type UploadFiles = { file?: Express.Multer.File[]; thumbnail?: Express.Multer.File[] };
 
 function uploadedPaths(files: UploadFiles | undefined): string[] {
   return Object.values(files ?? {})
@@ -47,7 +47,10 @@ async function parseUpload(req: Request, res: Response, next: NextFunction): Pro
     }),
     limits: { fileSize: maxUploadSizeBytes },
   });
-  const uploadFields = upload.fields([{ name: 'file', maxCount: 1 }]);
+  const uploadFields = upload.fields([
+    { name: 'file', maxCount: 1 },
+    { name: 'thumbnail', maxCount: 1 },
+  ]);
   res.locals.maxUploadSizeBytes = maxUploadSizeBytes;
 
   uploadFields(req, res, (err: unknown) => {
@@ -83,6 +86,13 @@ router.post('/audio/upload/:chatId', parseUpload, (req: Request, res: Response) 
     return;
   }
 
+  const thumbnail = files?.thumbnail?.[0];
+  if (thumbnail && !SAFE_IMAGE_MIME_TYPE.test(thumbnail.mimetype)) {
+    void cleanupUploadFiles(uploadedPaths(files));
+    res.status(400).json({ error: `Capa deve ser uma imagem, recebido: ${thumbnail.mimetype}` });
+    return;
+  }
+
   const parsedBody = uploadBodySchema.safeParse(req.body);
   if (!parsedBody.success) {
     void cleanupUploadFiles(uploadedPaths(files));
@@ -93,7 +103,7 @@ router.post('/audio/upload/:chatId', parseUpload, (req: Request, res: Response) 
   const { chatId } = req.params;
   const { description, filename } = parsedBody.data;
   const originalFileName = filename ?? file.originalname;
-  const tempFiles = [file.path];
+  const tempFiles = [file.path, thumbnail?.path].filter((filePath): filePath is string => Boolean(filePath));
   const base = `${req.protocol}://${req.get('host')}`;
 
   const jobId = randomUUID();
@@ -112,6 +122,7 @@ router.post('/audio/upload/:chatId', parseUpload, (req: Request, res: Response) 
       originalFileName,
       maxUploadSizeBytes: res.locals.maxUploadSizeBytes as number,
       description,
+      thumbnailPath: thumbnail?.path,
       onProgress: (progress) => setProgress(jobId, progress),
     }),
   )

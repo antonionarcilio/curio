@@ -2,7 +2,7 @@ import { deleteMessage } from '@/telegram-client';
 import path from 'path';
 import request from 'supertest';
 import { app, authed } from './http-client';
-import { TARGETS } from './video-fixture';
+import { buildSmallThumbnailBuffer, TARGETS } from './video-fixture';
 
 // Áudio real curto (~5s, tom senoidal sintético gerado via ffmpeg com tags
 // ID3 title/artist) — pequeno o bastante pra não repetir o custo de um
@@ -30,6 +30,7 @@ async function deleteAudioFixtureViaApi(chatId: string, messageId: number): Prom
 }
 
 export {
+  buildSmallThumbnailBuffer,
   deleteAudioFixtureViaApi,
   EDITED_AUDIO_DESCRIPTION,
   ORIGINAL_AUDIO_DESCRIPTION,

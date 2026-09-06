@@ -55,15 +55,20 @@ describe('POST /audio/upload/:chatId', () => {
 
   it('accepts the upload and returns a queued job id immediately', async () => {
     let receivedAudio: Buffer | undefined;
-    mockUploadAudio.mockImplementation(async (_chatId: string, params: { audioPath: string }) => {
-      receivedAudio = await fs.readFile(params.audioPath);
-      return uploadedAudio;
-    });
+    let receivedCover: Buffer | undefined;
+    mockUploadAudio.mockImplementation(
+      async (_chatId: string, params: { audioPath: string; thumbnailPath: string }) => {
+        receivedAudio = await fs.readFile(params.audioPath);
+        receivedCover = await fs.readFile(params.thumbnailPath);
+        return uploadedAudio;
+      },
+    );
 
     const res = await request(buildApp())
       .post('/audio/upload/me')
       .field('description', 'uma descrição')
-      .attach('file', Buffer.from('audio-bytes'), { filename: 'original.mp3', contentType: 'audio/mpeg' });
+      .attach('file', Buffer.from('audio-bytes'), { filename: 'original.mp3', contentType: 'audio/mpeg' })
+      .attach('thumbnail', Buffer.from('cover-bytes'), { filename: 'cover.jpg', contentType: 'image/jpeg' });
 
     expect(res.status).toBe(202);
     expect(res.body.status).toBe('queued');
@@ -78,12 +83,15 @@ describe('POST /audio/upload/:chatId', () => {
     expect(typeof params.audioPath).toBe('string');
     expect(params.audioSize).toBe(Buffer.byteLength('audio-bytes'));
     expect(receivedAudio).toEqual(Buffer.from('audio-bytes'));
+    expect(typeof params.thumbnailPath).toBe('string');
+    expect(receivedCover).toEqual(Buffer.from('cover-bytes'));
     expect(params.maxUploadSizeBytes).toBe(20);
     expect(typeof params.onProgress).toBe('function');
 
     params.onProgress(0.5);
     expect(getJob(res.body.job_id)?.progress).toBe(0.5);
     await expect(fs.access(params.audioPath)).rejects.toThrow();
+    await expect(fs.access(params.thumbnailPath)).rejects.toThrow();
   });
 
   it('completes the job with the uploaded audio metadata and a signed url', async () => {
@@ -112,6 +120,7 @@ describe('POST /audio/upload/:chatId', () => {
     await waitForJobSettled(res.body.job_id);
     const params = mockUploadAudio.mock.calls[0][1];
     expect(params.description).toBeUndefined();
+    expect(params.thumbnailPath).toBeUndefined();
   });
 
   it('uses the filename multipart field instead of the uploaded filename', async () => {
@@ -152,6 +161,28 @@ describe('POST /audio/upload/:chatId', () => {
     const res = await request(buildApp())
       .post('/audio/upload/me')
       .attach('file', Buffer.from('not-an-audio-file'), { filename: 'file.txt', contentType: 'text/plain' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBeDefined();
+    expect(mockUploadAudio).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when the cover thumbnail mimetype is not image/*', async () => {
+    const res = await request(buildApp())
+      .post('/audio/upload/me')
+      .attach('file', Buffer.from('audio-bytes'), { filename: 'original.mp3', contentType: 'audio/mpeg' })
+      .attach('thumbnail', Buffer.from('not-an-image'), { filename: 'cover.txt', contentType: 'text/plain' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/text\/plain/);
+    expect(mockUploadAudio).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when the description body field is invalid', async () => {
+    const res = await request(buildApp())
+      .post('/audio/upload/me')
+      .field('description', '   ')
+      .attach('file', Buffer.from('audio-bytes'), { filename: 'original.mp3', contentType: 'audio/mpeg' });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBeDefined();

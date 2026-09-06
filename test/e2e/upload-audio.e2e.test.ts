@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import request from 'supertest';
 import {
+  buildSmallThumbnailBuffer,
   deleteAudioFixtureViaApi,
   ORIGINAL_AUDIO_DESCRIPTION,
   TARGETS,
@@ -24,12 +25,14 @@ describe.each(TARGETS)('POST /api/v1/audio/upload/:chatId (e2e) — $label', ({ 
     if (uploadedMessageId) await deleteAudioFixtureViaApi(chatId, uploadedMessageId);
   });
 
-  it('uploads the real audio file and returns matching metadata', async () => {
+  it('uploads the real audio file with a cover and returns matching metadata', async () => {
     const audioBuffer = fs.readFileSync(TEST_AUDIO_PATH);
+    const coverBuffer = await buildSmallThumbnailBuffer();
 
     const res = await authed(request(app).post(`/api/v1/audio/upload/${chatId}`))
       .field('description', ORIGINAL_AUDIO_DESCRIPTION)
-      .attach('file', audioBuffer, { filename: path.basename(TEST_AUDIO_PATH), contentType: 'audio/mpeg' });
+      .attach('file', audioBuffer, { filename: path.basename(TEST_AUDIO_PATH), contentType: 'audio/mpeg' })
+      .attach('thumbnail', coverBuffer, { filename: 'cover.jpg', contentType: 'image/jpeg' });
 
     expect(res.status).toBe(202);
     expect(res.body.status).toBe('queued');
@@ -44,5 +47,16 @@ describe.each(TARGETS)('POST /api/v1/audio/upload/:chatId (e2e) — $label', ({ 
     expect(job.mime_type).toMatch(/^audio\//);
     expect(job.size).toBeGreaterThan(0);
     expect(job.url).toMatch(/^http:\/\/.+\/api\/v1\/audio\/stream\/.+\?exp=\d+&sig=[0-9a-f]+$/);
+  });
+
+  it('serves the uploaded cover back via ?thumbnail=true', async () => {
+    const res = await authed(request(app).get(`/api/v1/audios/by/${chatId}`)).query({ thumbnail: 'true', limit: 20 });
+
+    expect(res.status).toBe(200);
+    const uploaded = res.body.data.find((item: { message_id: number }) => item.message_id === uploadedMessageId);
+    expect(uploaded).toBeDefined();
+    expect(uploaded.thumbnail).toMatch(/^data:image\/jpeg;base64,/);
+    expect(typeof uploaded.thumbnail_width).toBe('number');
+    expect(typeof uploaded.thumbnail_height).toBe('number');
   });
 });

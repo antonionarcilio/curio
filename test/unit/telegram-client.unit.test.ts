@@ -1045,6 +1045,7 @@ describe('telegram-client', () => {
         audioSize: 11,
         originalFileName: 'original.mp3',
         description: 'uma descrição',
+        thumbnailPath: '/tmp/cover.jpg',
       });
 
       expect(mockClient.uploadFile).toHaveBeenCalledTimes(1);
@@ -1061,6 +1062,10 @@ describe('telegram-client', () => {
       expect(options.supportsStreaming).toBeUndefined();
       expect(options.file).toBe(UPLOADED_FILE_HANDLE);
       expect(options.attributes[0]).toMatchObject({ fileName: 'original.mp3' });
+      // A capa (thumb) precisa ser o Buffer cru — sendFile só reconhece
+      // Buffer.isBuffer(thumb) nesse branch, nunca um CustomFile.
+      expect(Buffer.isBuffer(options.thumb)).toBe(true);
+      expect(mockReadFile).toHaveBeenCalledWith('/tmp/cover.jpg');
 
       expect(result).toEqual({
         message_id: 55,
@@ -1098,13 +1103,15 @@ describe('telegram-client', () => {
       expect(options.attributes).toHaveLength(1);
     });
 
-    it('uploads without an optional caption', async () => {
+    it('uploads without an optional caption or cover', async () => {
       mockClient.sendFile.mockResolvedValue(makeAudioMessage({ id: 56 }));
 
       await uploadAudio('me', { audioPath: '/tmp/audio.mp3', audioSize: 11, originalFileName: 'original.mp3' });
 
       const options = mockClient.sendFile.mock.calls[0][1];
       expect(options.caption).toBeUndefined();
+      expect(options.thumb).toBeUndefined();
+      expect(mockReadFile).not.toHaveBeenCalled();
     });
 
     it('clears all caches after a successful upload', async () => {

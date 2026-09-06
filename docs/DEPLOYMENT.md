@@ -23,14 +23,14 @@ vez de usar a imagem do GHCR:
 
 ```bash
 docker build --target prod -t api-tg-cdn:prod .
-docker run --env-file .env -p 8787:8787 api-tg-cdn:prod
+docker run -d --name api-tg-cdn --env-file .env -p 8787:8787 api-tg-cdn:prod
 ```
 
 ## Rodando a imagem publicada no GHCR
 
 ```bash
 docker pull ghcr.io/antonionarcilio/api-tg-cdn:latest
-docker run --env-file .env -p 8787:8787 ghcr.io/antonionarcilio/api-tg-cdn:latest
+docker run -d --name api-tg-cdn --env-file .env -p 8787:8787 ghcr.io/antonionarcilio/api-tg-cdn:latest
 ```
 
 - **`--env-file .env`**: a imagem não embute nenhuma credencial — precisa do seu

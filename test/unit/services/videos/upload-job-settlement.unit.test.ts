@@ -1,13 +1,15 @@
-const mockDeleteVideoMessage = jest.fn();
+const mockDeleteMessage = jest.fn();
 const mockCompleteJob = jest.fn();
 const mockFinalizeCancelledJob = jest.fn();
 const mockIsCancelRequested = jest.fn();
 
-jest.mock('@/telegram-client', () => ({ deleteVideoMessage: mockDeleteVideoMessage }));
+jest.mock('@/telegram-client', () => ({ deleteMessage: mockDeleteMessage }));
 jest.mock('@/services/upload-progress-store', () => ({
-  completeJob: mockCompleteJob,
-  finalizeCancelledJob: mockFinalizeCancelledJob,
-  isCancelRequested: mockIsCancelRequested,
+  videoUploadJobStore: {
+    completeJob: mockCompleteJob,
+    finalizeCancelledJob: mockFinalizeCancelledJob,
+    isCancelRequested: mockIsCancelRequested,
+  },
 }));
 
 import { settleUploadJob } from '@/services/videos/upload-job-settlement';
@@ -34,17 +36,17 @@ describe('settleUploadJob', () => {
       ...uploadedVideo,
       url: expect.stringMatching(/^http:\/\/localhost\/api\/v1\/video\/stream\/me\/42/),
     });
-    expect(mockDeleteVideoMessage).not.toHaveBeenCalled();
+    expect(mockDeleteMessage).not.toHaveBeenCalled();
     expect(mockFinalizeCancelledJob).not.toHaveBeenCalled();
   });
 
   it('deletes the video and finalizes the job as cancelled when a cancel was requested', async () => {
     mockIsCancelRequested.mockReturnValue(true);
-    mockDeleteVideoMessage.mockResolvedValue(undefined);
+    mockDeleteMessage.mockResolvedValue(undefined);
 
     await settleUploadJob('job2', 'me', 'http://localhost', uploadedVideo);
 
-    expect(mockDeleteVideoMessage).toHaveBeenCalledWith('me', 42);
+    expect(mockDeleteMessage).toHaveBeenCalledWith('me', 42);
     expect(mockFinalizeCancelledJob).toHaveBeenCalledWith('job2');
     expect(mockCompleteJob).not.toHaveBeenCalled();
   });

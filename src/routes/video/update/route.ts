@@ -1,4 +1,4 @@
-import { editVideoCaption } from '@/telegram-client';
+import { editMessageCaption } from '@/telegram-client';
 import express, { type Request, type Response } from 'express';
 import { z } from 'zod';
 
@@ -17,7 +17,7 @@ router.patch('/video/update/:chatId/:messageId', async (req: Request, res: Respo
 
   try {
     const { chatId, messageId } = req.params;
-    await editVideoCaption(chatId, messageId, parsedBody.data.description);
+    await editMessageCaption(chatId, messageId, parsedBody.data.description);
     res.json({ edited: true, chat_id: chatId, message_id: messageId });
   } catch (err) {
     res.status(404).json({ error: (err as Error).message });

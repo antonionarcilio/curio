@@ -50,7 +50,7 @@ describe.each(TARGETS)('GET /api/v1/video/dl/:chatId/:messageId (e2e) — $label
     // A assinatura só depende de chatId:messageId:exp, não do prefixo do path
     // — createSignedUrl sempre aponta pra /video/stream/..., então troca o
     // segmento pra exercitar o mesmo bypass na rota de download.
-    const signedUrl = createSignedUrl('', chatId, messageId).replace('/video/stream/', '/video/dl/');
+    const signedUrl = createSignedUrl('', 'video', chatId, messageId).replace('/video/stream/', '/video/dl/');
 
     const res = await request(app).get(signedUrl).set('Range', 'bytes=0-1023');
 
@@ -58,7 +58,7 @@ describe.each(TARGETS)('GET /api/v1/video/dl/:chatId/:messageId (e2e) — $label
   });
 
   it('rejects a tampered signature with 401', async () => {
-    const signedUrl = createSignedUrl('', chatId, messageId)
+    const signedUrl = createSignedUrl('', 'video', chatId, messageId)
       .replace('/video/stream/', '/video/dl/')
       .replace(/sig=[0-9a-f]+/, 'sig=0000000000000000');
 

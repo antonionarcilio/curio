@@ -8,7 +8,7 @@ import {
   ensureUploadTempDir,
   uploadTempDir,
   uploadTempFileName,
-} from '@/services/videos/upload-temp-files';
+} from '@/services/upload-temp-files';
 
 const currentTempDir = uploadTempDir();
 const legacyTempDir = path.join(os.tmpdir(), 'tg-uploader-api');

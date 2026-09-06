@@ -1,34 +1,30 @@
+import config from '@/config';
+import { probeVideoMetadata } from '@/services/videos/probe';
+import { clearAllCaches, withCache } from '@/utils/ttl-cache';
 import fs from 'fs/promises';
 import pLimit from 'p-limit';
-import { Api, TelegramClient } from 'teleproto';
+import { Api, type TelegramClient } from 'teleproto';
 import { CustomFile } from 'teleproto/client/uploads';
-import { StringSession } from 'teleproto/sessions';
-import config from './config';
-import { probeVideoMetadata } from './services/videos/probe';
-import { clearAllCaches, withCache } from './utils/ttl-cache';
+import {
+  client,
+  ensureConnected,
+  findLargestPhotoSize,
+  resolveEntity,
+  STANDARD_MAX_UPLOAD_SIZE_BYTES,
+  toJpegDataUri,
+  type Dialog,
+  type MediaFetchParams,
+  type ThumbnailInfo,
+} from './shared';
 
-const client = new TelegramClient(new StringSession(config.session), config.apiId, config.apiHash, {
-  connectionRetries: 5,
-});
-
-let connected = false;
-
-async function ensureConnected(): Promise<TelegramClient> {
-  if (!connected) {
-    await client.connect();
-    connected = true;
-  }
-  return client;
-}
-
-type VideoDocument = {
+export type VideoDocument = {
   document: Api.Document;
   size: number;
   mimeType: string;
   fileName: string;
 };
 
-type VideoListItem = {
+export type VideoListItem = {
   message_id: number;
   file_name: string;
   size: number;
@@ -36,24 +32,18 @@ type VideoListItem = {
   date: number;
 };
 
-type VideoAttributes = {
+export type VideoAttributes = {
   duration: number | null;
   width: number | null;
   height: number | null;
   supports_streaming: boolean;
 };
 
-type ThumbnailInfo = {
-  thumbnail_width: number | null;
-  thumbnail_height: number | null;
-  thumbnail: string | null;
-};
-
 // Item rico usado pela listagem de vídeos por peer: tudo aqui sai do mesmo
 // Api.Document que já vem na mensagem, sem chamada extra ao Telegram.
-type ChannelVideoItem = VideoListItem & VideoAttributes & ThumbnailInfo & { description: string | null };
+export type ChannelVideoItem = VideoListItem & VideoAttributes & ThumbnailInfo & { description: string | null };
 
-type VideoListEntry = {
+export type VideoListEntry = {
   chat_id: string;
   chat_title: string;
   message_id: number;
@@ -64,55 +54,25 @@ type VideoListEntry = {
   description: string | null;
 };
 
-// /channels só lida com peers do tipo Channel (TeleProto: dialog.isChannel), por
-// isso usa channel_id/channel_title.
-type ChannelListEntry = {
-  channel_id: string;
-  channel_title: string;
-};
+export type VideoFetchParams = MediaFetchParams;
 
-type ChannelInfo = {
-  channel_id: string;
-  channel_title: string;
-  description: string | null;
-  username: string | null;
-  type: 'channel' | 'supergroup';
-  participants_count: number | null;
-  admins_count: number | null;
-  kicked_count: number | null;
-  banned_count: number | null;
-  online_count: number | null;
-};
+export type VideoFetchResult = { items: ChannelVideoItem[]; total: number };
 
-type MyProfile = {
-  id: string;
-  first_name: string | null;
-  last_name: string | null;
-  username: string | null;
-  premium: boolean;
-};
-
-type VideoFetchParams = { limit: number; offset: number };
-
-type VideoFetchResult = { items: ChannelVideoItem[]; total: number };
-
-type ChannelVideosResult = {
+export type ChannelVideosResult = {
   channel_id: string;
   channel_title: string;
   items: ChannelVideoItem[];
   total: number;
 };
 
-type VideoThumbnail = ThumbnailInfo & { thumbnail: string };
+export type VideoThumbnail = ThumbnailInfo & { thumbnail: string };
 
-type VideoMessageResult = VideoDocument & { message: Api.Message };
-
-type Dialog = Awaited<ReturnType<TelegramClient['getDialogs']>>[number];
+export type VideoMessageResult = VideoDocument & { message: Api.Message };
 
 // O filtro `InputMessagesFilterVideo` na busca já garante que só documentos de
 // vídeo chegam aqui (exclui video-notes e GIFs, que têm filtros próprios) —
 // esta função só extrai os metadados do documento, não decide mais "é vídeo?".
-function extractVideoDocument(message: Api.Message): VideoDocument | null {
+export function extractVideoDocument(message: Api.Message): VideoDocument | null {
   const media = message.media;
   const document = media && 'document' in media ? (media.document as Api.Document | undefined) : undefined;
   if (!document || !('mimeType' in document)) return null;
@@ -140,17 +100,6 @@ function extractVideoAttributes(document: Api.Document): VideoAttributes {
   };
 }
 
-// Só PhotoSize carrega w/h; PhotoStrippedSize/PhotoCachedSize não têm dimensões
-// declaradas no schema do MTProto, então não servem pra thumbnail_width/height.
-function findLargestPhotoSize(thumbs: Api.TypePhotoSize[]): Api.PhotoSize | undefined {
-  return thumbs
-    .filter((thumb): thumb is Api.PhotoSize => thumb.className === 'PhotoSize')
-    .reduce<Api.PhotoSize | undefined>(
-      (largest, thumb) => (!largest || thumb.w > largest.w ? thumb : largest),
-      undefined,
-    );
-}
-
 // thumbnail_width/height são de graça (só leem o Api.Document que já veio na
 // mensagem). Os bytes de `thumbnail`, porém, exigem um download por vídeo —
 // por isso ficam null aqui e só são preenchidos por getVideoThumbnail, quando
@@ -165,10 +114,6 @@ function extractThumbnailInfo(document: Api.Document): ThumbnailInfo {
   };
 }
 
-function toJpegDataUri(bytes: Buffer): string {
-  return `data:image/jpeg;base64,${bytes.toString('base64')}`;
-}
-
 function buildChannelVideoItem(message: Api.Message, video: VideoDocument): ChannelVideoItem {
   return {
     message_id: message.id,
@@ -181,47 +126,6 @@ function buildChannelVideoItem(message: Api.Message, video: VideoDocument): Chan
     ...extractThumbnailInfo(video.document),
   };
 }
-
-function optionalNumber(value: unknown): number | null {
-  return typeof value === 'number' ? value : null;
-}
-
-function optionalString(value: unknown): string | null {
-  return typeof value === 'string' && value.length > 0 ? value : null;
-}
-
-function valueToString(value: unknown): string | null {
-  if (value === null || value === undefined) return null;
-  return value.toString();
-}
-
-// TeleProto só resolve um chatId numérico bruto pra getMessages/getEntity se o
-// access_hash correspondente já estiver no cache interno de entidades — e esse
-// cache só é populado como efeito colateral de getDialogs(). Sem isso, a
-// primeira chamada a uma rota de canal/chat específico falha com
-// "Could not find the input entity" até que uma rota como /api/v1/videos/grouped
-// ou /api/v1/channels rode uma vez
-// (eles chamam getDialogs). Esta função replica esse aquecimento sob demanda.
-async function resolveEntityUncached(chatId: string): Promise<unknown> {
-  const tg = await ensureConnected();
-  try {
-    return await tg.getEntity(chatId);
-  } catch {
-    await tg.getDialogs({});
-    try {
-      return await tg.getEntity(chatId);
-    } catch (error) {
-      throw new Error(
-        `Não foi possível resolver a entidade do Telegram para chatId "${chatId}" ` +
-          `(esperado: id numérico, "me", ou @username de um chat/canal já conhecido pela conta). ` +
-          `Detalhe original: ${(error as Error).message}`,
-        { cause: error },
-      );
-    }
-  }
-}
-
-const resolveEntity = withCache(config.cacheTtlMs, (chatId: string) => chatId, resolveEntityUncached);
 
 async function getVideoMessageUncached(chatId: string, messageId: string | number): Promise<VideoMessageResult> {
   const tg = await ensureConnected();
@@ -240,7 +144,7 @@ async function getVideoMessageUncached(chatId: string, messageId: string | numbe
   return { message, ...video };
 }
 
-const getVideoMessage = withCache(
+export const getVideoMessage = withCache(
   config.cacheTtlMs,
   (chatId: string, messageId: string | number) => `${chatId}:${messageId}`,
   getVideoMessageUncached,
@@ -274,7 +178,7 @@ async function getVideoThumbnailUncached(chatId: string, messageId: string | num
   };
 }
 
-const getVideoThumbnail = withCache(
+export const getVideoThumbnail = withCache(
   config.cacheTtlMs,
   (chatId: string, messageId: string | number) => `${chatId}:${messageId}`,
   getVideoThumbnailUncached,
@@ -299,88 +203,11 @@ async function listVideosUncached(chatId: string, { limit, offset }: VideoFetchP
   return { items, total: messages.total ?? items.length };
 }
 
-const listVideos = withCache(
+export const listVideos = withCache(
   config.cacheTtlMs,
   (chatId: string, { limit, offset }: VideoFetchParams) => `${chatId}:${limit}:${offset}`,
   listVideosUncached,
 );
-
-async function listChannelsUncached(limit: number): Promise<ChannelListEntry[]> {
-  const tg = await ensureConnected();
-  const dialogs = await tg.getDialogs({ limit });
-
-  return dialogs
-    .filter((dialog) => dialog.isChannel)
-    .map((dialog) => ({
-      channel_id: (dialog.id ?? '').toString(),
-      channel_title: dialog.title || dialog.name || (dialog.id ?? '').toString(),
-    }));
-}
-
-const listChannels = withCache(config.cacheTtlMs, (limit: number) => `${limit}`, listChannelsUncached);
-
-async function getMyProfileUncached(): Promise<MyProfile> {
-  const tg = await ensureConnected();
-  const me = await tg.getMe();
-
-  return {
-    id: me.id.toString(),
-    first_name: optionalString(me.firstName),
-    last_name: optionalString(me.lastName),
-    username: optionalString(me.username),
-    premium: me.premium ?? false,
-  };
-}
-
-const getMyProfile = withCache(config.cacheTtlMs, () => 'me', getMyProfileUncached);
-
-async function getChannelInfoUncached(channelId: string): Promise<ChannelInfo> {
-  const entity = (await resolveEntity(channelId)) as Api.TypeEntityLike & {
-    className?: string;
-    id?: unknown;
-    title?: string;
-    username?: string;
-    broadcast?: boolean;
-    megagroup?: boolean;
-  };
-
-  if (entity.className !== 'Channel') {
-    throw new Error(`A entidade "${channelId}" não é um canal ou supergrupo do Telegram`);
-  }
-
-  const tg = await ensureConnected();
-  const full = (await tg.api.channels.getFullChannel({ channel: entity })) as {
-    fullChat?: {
-      about?: string;
-      participantsCount?: number;
-      adminsCount?: number;
-      kickedCount?: number;
-      bannedCount?: number;
-      onlineCount?: number;
-    };
-  };
-  const fullChat = full.fullChat ?? {};
-  // entity.id é o ID cru do MTProto (sem o prefixo "-100"); listChannelsUncached
-  // usa dialog.id, que o TeleProto já retorna marcado (Utils.getPeerId com
-  // addMark=true) — sem isso, /channel/:channel_id devolvia um channel_id em
-  // formato diferente do que /channels usa pro mesmo canal.
-  const markedChannelId = valueToString(await tg.getPeerId(entity));
-
-  return {
-    channel_id: markedChannelId ?? valueToString(entity.id) ?? channelId,
-    channel_title: entity.title || entity.username || channelId,
-    description: optionalString(fullChat.about),
-    username: optionalString(entity.username),
-    type: entity.megagroup ? 'supergroup' : 'channel',
-    participants_count: optionalNumber(fullChat.participantsCount),
-    admins_count: optionalNumber(fullChat.adminsCount),
-    kicked_count: optionalNumber(fullChat.kickedCount),
-    banned_count: optionalNumber(fullChat.bannedCount),
-    online_count: optionalNumber(fullChat.onlineCount),
-  };
-}
-
-const getChannelInfo = withCache(config.cacheTtlMs, (channelId: string) => channelId, getChannelInfoUncached);
 
 async function getChannelVideosUncached(chatId: string, params: VideoFetchParams): Promise<ChannelVideosResult> {
   const entity = (await resolveEntity(chatId)) as { title?: string; username?: string };
@@ -390,7 +217,7 @@ async function getChannelVideosUncached(chatId: string, params: VideoFetchParams
   return { channel_id: chatId.toString(), channel_title: channelTitle, items, total };
 }
 
-const getChannelVideos = withCache(
+export const getChannelVideos = withCache(
   config.cacheTtlMs,
   (chatId: string, { limit, offset }: VideoFetchParams) => `${chatId}:${limit}:${offset}`,
   getChannelVideosUncached,
@@ -443,13 +270,13 @@ async function listAllVideosUncached({ perChatLimit = 100 }: { perChatLimit?: nu
   return perDialog.flat();
 }
 
-const listAllVideos = withCache(
+export const listAllVideos = withCache(
   config.cacheTtlMs,
   ({ perChatLimit = 100 }: { perChatLimit?: number } = {}) => `${perChatLimit}`,
   listAllVideosUncached,
 );
 
-type UploadVideoParams = {
+export type UploadVideoParams = {
   videoPath: string;
   videoSize: number;
   originalFileName: string;
@@ -459,23 +286,7 @@ type UploadVideoParams = {
   onProgress?: (progress: number) => void;
 };
 
-// Mesmo teto que o próprio Telegram aplica a contas normais.
-const STANDARD_MAX_UPLOAD_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
-const PREMIUM_MAX_UPLOAD_SIZE_BYTES = 4 * 1024 * 1024 * 1024;
-
-// Não reutiliza o cache de getMyProfile: o limite de upload precisa refletir
-// o plano atual no instante em que a requisição começa a receber seus bytes.
-async function getUploadMaxSize(): Promise<number> {
-  const tg = await ensureConnected();
-  const me = await tg.getMe();
-  return me.premium ? PREMIUM_MAX_UPLOAD_SIZE_BYTES : STANDARD_MAX_UPLOAD_SIZE_BYTES;
-}
-
-// editMessage do Telegram só troca os bytes do arquivo (file/forceDocument),
-// nunca nome/thumbnail (attributes/thumb) — por isso thumbnail customizado só
-// é possível no upload, via sendFile, nunca numa edição de mensagem existente
-// (ver CLAUDE.md/docs/ROUTES.md para o motivo).
-async function uploadVideo(chatId: string, params: UploadVideoParams): Promise<VideoListItem> {
+export async function uploadVideo(chatId: string, params: UploadVideoParams): Promise<VideoListItem> {
   const tg = await ensureConnected();
   await resolveEntity(chatId);
   const file = new CustomFile(params.originalFileName, params.videoSize, params.videoPath);
@@ -542,45 +353,3 @@ async function uploadVideo(chatId: string, params: UploadVideoParams): Promise<V
     date: message.date,
   };
 }
-
-async function editVideoCaption(chatId: string, messageId: string | number, description: string): Promise<void> {
-  const tg = await ensureConnected();
-  await resolveEntity(chatId);
-  await tg.editMessage(chatId, { message: Number(messageId), text: description });
-  clearAllCaches();
-}
-
-async function deleteVideoMessage(chatId: string, messageId: string | number): Promise<void> {
-  const tg = await ensureConnected();
-  await resolveEntity(chatId);
-  await tg.deleteMessages(chatId, [Number(messageId)], { revoke: true });
-  clearAllCaches();
-}
-
-export {
-  client,
-  deleteVideoMessage,
-  editVideoCaption,
-  ensureConnected,
-  getChannelInfo,
-  getChannelVideos,
-  getMyProfile,
-  getUploadMaxSize,
-  getVideoMessage,
-  getVideoThumbnail,
-  listAllVideos,
-  listChannels,
-  listVideos,
-  PREMIUM_MAX_UPLOAD_SIZE_BYTES,
-  STANDARD_MAX_UPLOAD_SIZE_BYTES,
-  uploadVideo,
-};
-export type {
-  ChannelInfo,
-  ChannelVideoItem,
-  MyProfile,
-  VideoFetchParams,
-  VideoListEntry,
-  VideoListItem,
-  VideoThumbnail,
-};

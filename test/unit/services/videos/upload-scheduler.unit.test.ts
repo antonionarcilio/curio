@@ -2,8 +2,10 @@ const mockGetJob = jest.fn();
 const mockStartJob = jest.fn();
 
 jest.mock('@/services/upload-progress-store', () => ({
-  getJob: mockGetJob,
-  startJob: mockStartJob,
+  videoUploadJobStore: {
+    getJob: mockGetJob,
+    startJob: mockStartJob,
+  },
 }));
 
 import { enqueueUpload, notifyQueueChanged, removeFromQueue } from '@/services/videos/upload-scheduler';

@@ -1,4 +1,4 @@
-import { deleteVideoMessage } from '@/telegram-client';
+import { deleteMessage } from '@/telegram-client';
 import path from 'path';
 import sharp from 'sharp';
 import request from 'supertest';
@@ -50,11 +50,18 @@ const TEST_QUEUE_FILE_NAME = path.basename(TEST_QUEUE_VIDEO_PATH);
 const ORIGINAL_DESCRIPTION = 'legenda original (e2e)';
 const EDITED_DESCRIPTION = 'legenda editada (e2e)';
 
-// Canal configurável via env var pra facilitar troca sem editar os testes — o
-// valor abaixo é só um fallback de conveniência (ver .env.sample). Precisa do
+// Canal configurável via env var (ver .env.sample) — sem fallback, pelo mesmo
+// motivo de TELEGRAM_SESSION/ACCESS_TOKEN/etc. em src/config.ts: sem um canal
+// real e2e não roda de qualquer forma, então um valor default aqui só serviria
+// pra expor publicamente qual canal o mantenedor usa pra teste. Precisa do
 // prefixo "-100": um ID positivo puro é interpretado pelo TeleProto como PeerUser
 // (usuário), não PeerChannel, e a resolução de entidade falha.
-const SMOKE_TEST_CHANNEL_ID = process.env.SMOKE_TEST_CHANNEL_ID || '-1003915432695';
+const SMOKE_TEST_CHANNEL_ID = process.env.SMOKE_TEST_CHANNEL_ID;
+if (!SMOKE_TEST_CHANNEL_ID) {
+  throw new Error(
+    'SMOKE_TEST_CHANNEL_ID é obrigatório para test:e2e (ver .env.sample) — esperado um ID de canal Telegram com prefixo "-100", ex.: -1001234567890',
+  );
+}
 
 type E2eTarget = { label: string; chatId: string; isChannel: boolean };
 
@@ -75,7 +82,7 @@ async function buildSmallThumbnailBuffer(): Promise<Buffer> {
 // chama a função direto, não a rota, precisamente para não depender da rota
 // que pode ser a que está quebrada.
 async function removeFixture(chatId: string, messageId: number): Promise<void> {
-  await deleteVideoMessage(chatId, messageId);
+  await deleteMessage(chatId, messageId);
 }
 
 // Limpeza pra qualquer outro arquivo e2e que não testa a rota de delete em

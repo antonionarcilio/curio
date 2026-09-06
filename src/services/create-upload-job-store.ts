@@ -1,0 +1,129 @@
+import config from '@/config';
+
+export type UploadJobStatus = 'queued' | 'paused' | 'uploading' | 'completed' | 'error' | 'cancelled';
+
+export type UploadJob<TResult> = {
+  status: UploadJobStatus;
+  progress: number;
+  chatId: string;
+  result?: TResult;
+  error?: string;
+  cancelRequested?: boolean;
+};
+
+// Fábrica de job-store: cada mídia (vídeo, áudio) instancia a sua própria,
+// com um Map privado à instância — assim uma fila não compartilha estado
+// (nem o escopo de pause-all/cancel) com a outra.
+export function createUploadJobStore<TResult>() {
+  const jobs = new Map<string, UploadJob<TResult>>();
+
+  // Jobs concluídos/com erro ficam consultáveis por um tempo depois do estado
+  // terminal, pra dar tempo do frontend buscar o resultado; jobs nunca
+  // consultados enquanto 'uploading' não são limpos ativamente.
+  function scheduleCleanup(jobId: string): void {
+    setTimeout(() => jobs.delete(jobId), config.uploadProgressTtlMs).unref();
+  }
+
+  function createJob(jobId: string, chatId: string): void {
+    jobs.set(jobId, { status: 'queued', progress: 0, chatId });
+  }
+
+  function startJob(jobId: string): void {
+    const job = jobs.get(jobId);
+    if (!job) return;
+    job.status = 'uploading';
+  }
+
+  function setProgress(jobId: string, progress: number): void {
+    const job = jobs.get(jobId);
+    if (!job) return;
+    job.progress = progress;
+  }
+
+  function completeJob(jobId: string, result: TResult | undefined): void {
+    const job = jobs.get(jobId);
+    if (!job) return;
+    job.status = 'completed';
+    job.progress = 1;
+    job.result = result;
+    scheduleCleanup(jobId);
+  }
+
+  function failJob(jobId: string, error: string): void {
+    const job = jobs.get(jobId);
+    if (!job) return;
+    job.status = 'error';
+    job.error = error;
+    scheduleCleanup(jobId);
+  }
+
+  function getJob(jobId: string): UploadJob<TResult> | undefined {
+    return jobs.get(jobId);
+  }
+
+  // Chamado quando o usuário pede cancelamento. Um job 'queued'/'paused' nunca
+  // chega a rodar o upload real, então já é finalizado aqui; um job
+  // 'uploading' só recebe a flag — o envio ao Telegram não pode ser abortado
+  // em voo, então o job continua 'uploading' até o settler decidir o que
+  // fazer.
+  function requestCancel(jobId: string): UploadJob<TResult> | undefined {
+    const job = jobs.get(jobId);
+    if (!job) return undefined;
+    job.cancelRequested = true;
+    if (job.status === 'queued' || job.status === 'paused') {
+      job.status = 'cancelled';
+      scheduleCleanup(jobId);
+    }
+    return job;
+  }
+
+  // Só afeta um job que ainda não começou a rodar o upload real — nunca um
+  // 'uploading' (não dá pra pausar um envio já em voo, ver requestCancel).
+  function pauseJob(jobId: string): UploadJob<TResult> | undefined {
+    const job = jobs.get(jobId);
+    if (!job) return undefined;
+    if (job.status === 'queued') job.status = 'paused';
+    return job;
+  }
+
+  function resumeJob(jobId: string): UploadJob<TResult> | undefined {
+    const job = jobs.get(jobId);
+    if (!job) return undefined;
+    if (job.status === 'paused') job.status = 'queued';
+    return job;
+  }
+
+  function getJobIdsByStatus(status: UploadJobStatus): string[] {
+    return [...jobs.entries()].filter(([, job]) => job.status === status).map(([jobId]) => jobId);
+  }
+
+  function isCancelRequested(jobId: string): boolean {
+    return jobs.get(jobId)?.cancelRequested === true;
+  }
+
+  // Usado depois que um upload que já estava em andamento termina e a
+  // mensagem correspondente é apagada do Telegram (soft-cancel).
+  function finalizeCancelledJob(jobId: string): void {
+    const job = jobs.get(jobId);
+    if (!job) return;
+    job.status = 'cancelled';
+    scheduleCleanup(jobId);
+  }
+
+  return {
+    createJob,
+    startJob,
+    setProgress,
+    completeJob,
+    failJob,
+    getJob,
+    requestCancel,
+    pauseJob,
+    resumeJob,
+    getJobIdsByStatus,
+    isCancelRequested,
+    finalizeCancelledJob,
+  };
+}
+
+export type UploadJobStore<TResult> = ReturnType<typeof createUploadJobStore<TResult>>;

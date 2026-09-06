@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import config from './config';
 import router from './router';
-import { cleanupOrphanedUploadFiles } from './services/videos/upload-temp-files';
+import { cleanupOrphanedUploadFiles } from './services/upload-temp-files';
 import { verifySignedUrl } from './signed-url';
 import { ensureConnected } from './telegram-client';
 
@@ -19,17 +19,18 @@ function extractBearerToken(req: Request): string {
   return match ? match[1] : '';
 }
 
-// A rota de streaming precisa ser abrível direto por URL (VLC, <video src>),
-// que não enviam headers customizados numa navegação simples. Em vez de
-// aceitar o token mestre na query string (o que o exporia em qualquer lugar
-// que a URL vaze — histórico, logs, etc.), ela aceita uma URL assinada e com
-// expiração (?exp=&sig=), escopada só àquele chatId/messageId. A rota de
-// download aceita o mesmo par assinado porque também precisa funcionar como
-// URL direta. As demais rotas exigem o header com o token mestre.
-const SIGNED_VIDEO_PATH = /^\/api\/v1\/video\/(?:stream|dl)\/([^/]+)\/([^/]+)$/;
+// As rotas de streaming (vídeo e áudio) precisam ser abríveis direto por URL
+// (VLC, <video src>/<audio src>), que não enviam headers customizados numa
+// navegação simples. Em vez de aceitar o token mestre na query string (o que
+// o exporia em qualquer lugar que a URL vaze — histórico, logs, etc.), elas
+// aceitam uma URL assinada e com expiração (?exp=&sig=), escopada só àquele
+// chatId/messageId. As rotas de download aceitam o mesmo par assinado porque
+// também precisam funcionar como URL direta. As demais rotas exigem o header
+// com o token mestre.
+const SIGNED_MEDIA_PATH = /^\/api\/v1\/(?:video|audio)\/(?:stream|dl)\/([^/]+)\/([^/]+)$/;
 
 function verifySignedStream(req: Request): boolean {
-  const match = SIGNED_VIDEO_PATH.exec(req.path);
+  const match = SIGNED_MEDIA_PATH.exec(req.path);
   if (!match) return false;
 
   const [, chatId, messageId] = match;

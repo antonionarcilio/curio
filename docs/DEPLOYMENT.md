@@ -23,7 +23,7 @@ vez de usar a imagem do GHCR:
 
 ```bash
 docker build --target prod -t api-tg-cdn:prod .
-docker run -d --name api-tg-cdn --env-file .env -p 8787:8787 api-tg-cdn:prod
+docker run -d --restart unless-stopped --name api-tg-cdn --env-file .env -p 8787:8787 api-tg-cdn:prod
 ```
 
 ## Rodando a imagem publicada no GHCR

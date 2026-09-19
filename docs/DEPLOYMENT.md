@@ -22,15 +22,15 @@ Produção pode buildar localmente a partir do `Dockerfile` (`target: prod`), em
 vez de usar a imagem do GHCR:
 
 ```bash
-docker build --target prod -t api-tg-cdn:prod .
-docker run -d --restart unless-stopped --name api-tg-cdn --env-file .env -p 8787:8787 api-tg-cdn:prod
+docker build --target prod -t curio:prod .
+docker run -d --restart unless-stopped --name curio --env-file .env -p 8787:8787 curio:prod
 ```
 
 ## Rodando a imagem publicada no GHCR
 
 ```bash
-docker pull ghcr.io/antonionarcilio/api-tg-cdn:latest
-docker run -d --name api-tg-cdn --env-file .env -p 8787:8787 ghcr.io/antonionarcilio/api-tg-cdn:latest
+docker pull ghcr.io/antonionarcilio/curio:latest
+docker run -d --name curio --env-file .env -p 8787:8787 ghcr.io/antonionarcilio/curio:latest
 ```
 
 - **`--env-file .env`**: a imagem não embute nenhuma credencial — precisa do seu
@@ -42,17 +42,18 @@ docker run -d --name api-tg-cdn --env-file .env -p 8787:8787 ghcr.io/antonionarc
   `PORT=9000` no `.env`).
 - Essa imagem é sempre `target: prod` — roda `node dist/server.js` direto, sem
   hot reload nem devDependencies.
-- Pull: o repositório `antonionarcilio/api-tg-cdn` é público. Se `docker pull`
+- Pull: o repositório `antonionarcilio/curio` é privado, mas o pacote GHCR foi
+  configurado público, então `docker pull` funciona sem autenticação. Se o pull
   mesmo assim retornar `unauthorized`/`denied` (o pacote GHCR pode ter
   visibilidade própria independente do repo), autentique antes com
   `docker login ghcr.io -u antonionarcilio` (um PAT com escopo `read:packages`
   já é suficiente para pull).
 - Para rodar em background, adicione `-d`; para nomear o container (facilita
-  `docker logs`/`docker stop` depois), adicione `--name api-tg-cdn`:
+  `docker logs`/`docker stop` depois), adicione `--name curio`:
 
   ```bash
-  docker run -d --name api-tg-cdn --env-file .env -p 8787:8787 \
-    ghcr.io/antonionarcilio/api-tg-cdn:latest
+  docker run -d --name curio --env-file .env -p 8787:8787 \
+    ghcr.io/antonionarcilio/curio:latest
   ```
 
 ## Publicação da imagem

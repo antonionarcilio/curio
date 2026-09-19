@@ -24,7 +24,7 @@ set -euo pipefail
 
 REGISTRY="ghcr.io"
 OWNER="antonionarcilio"
-IMAGE="api-tg-cdn"
+IMAGE="curio"
 FULL_IMAGE="${REGISTRY}/${OWNER}/${IMAGE}"
 
 usage() {

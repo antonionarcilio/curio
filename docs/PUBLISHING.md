@@ -1,9 +1,10 @@
 # Publicação da imagem (GHCR)
 
-A imagem de produção é publicada em `ghcr.io/antonionarcilio/api-tg-cdn`. O
-repositório `antonionarcilio/api-tg-cdn` é público; a visibilidade do pacote
-GHCR pode, no entanto, ser configurada independentemente — confira em
-https://github.com/antonionarcilio/api-tg-cdn/pkgs/container/api-tg-cdn.
+A imagem de produção é publicada em `ghcr.io/antonionarcilio/curio`. O
+repositório `antonionarcilio/curio` é privado, mas o pacote GHCR foi
+configurado como público; a visibilidade do pacote pode ser ajustada
+independentemente do repo — confira em
+https://github.com/antonionarcilio/curio/pkgs/container/curio.
 
 ## Automática (GitHub Actions)
 
